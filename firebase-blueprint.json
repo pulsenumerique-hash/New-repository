@@ -1,0 +1,146 @@
+{
+  "entities": {
+    "User": {
+      "collection": "users",
+      "fields": {
+        "uid": "string",
+        "email": "string",
+        "first_name": "string",
+        "last_name": "string",
+        "role": "string",
+        "boutique_id": "string",
+        "is_active": "boolean",
+        "email_verified": "boolean",
+        "avatar": "string",
+        "created_at": "string",
+        "last_login": "string"
+      }
+    },
+    "Boutique": {
+      "collection": "boutiques",
+      "fields": {
+        "id": "string",
+        "name": "string",
+        "owner_id": "string",
+        "initial_capital": "number",
+        "currency": "string",
+        "created_at": "string"
+      }
+    },
+    "Product": {
+      "collection": "products",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "name": "string",
+        "category": "string",
+        "package_type": "string",
+        "package_purchase_price": "number",
+        "units_per_package": "number",
+        "unit_purchase_price": "number",
+        "unit_sale_price": "number",
+        "package_stock": "number",
+        "unit_stock": "number",
+        "min_alert_threshold": "number",
+        "barcode": "string",
+        "created_at": "string",
+        "updated_at": "string"
+      }
+    },
+    "Sale": {
+      "collection": "sales",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "items": "array",
+        "total_amount": "number",
+        "payment_type": "string",
+        "client_id": "string",
+        "client_name": "string",
+        "cashier_id": "string",
+        "cashier_name": "string",
+        "date": "string",
+        "created_at": "string"
+      }
+    },
+    "Client": {
+      "collection": "clients",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "name": "string",
+        "phone": "string",
+        "credit_balance": "number",
+        "total_credit_purchased": "number",
+        "total_repaid": "number",
+        "notes": "string",
+        "created_at": "string",
+        "updated_at": "string"
+      }
+    },
+    "Refund": {
+      "collection": "refunds",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "client_id": "string",
+        "client_name": "string",
+        "amount": "number",
+        "note": "string",
+        "cashier_id": "string",
+        "cashier_name": "string",
+        "date": "string",
+        "created_at": "string"
+      }
+    },
+    "CashMovement": {
+      "collection": "cash_movements",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "type": "string",
+        "amount": "number",
+        "reason": "string",
+        "author": "string",
+        "cashier_id": "string",
+        "date": "string",
+        "created_at": "string"
+      }
+    },
+    "CashClosing": {
+      "collection": "cash_closings",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "date": "string",
+        "theoretical_cash": "number",
+        "counted_cash": "number",
+        "discrepancy": "number",
+        "total_cash_sales": "number",
+        "total_credit_sales": "number",
+        "total_refunds": "number",
+        "total_withdrawals": "number",
+        "total_injections": "number",
+        "notes": "string",
+        "closed_by_id": "string",
+        "closed_by_name": "string",
+        "created_at": "string"
+      }
+    },
+    "ActiveSession": {
+      "collection": "active_sessions",
+      "fields": {
+        "id": "string",
+        "user_id": "string",
+        "user_name": "string",
+        "boutique_id": "string",
+        "device_name": "string",
+        "device_type": "string",
+        "browser": "string",
+        "ip": "string",
+        "last_active": "string",
+        "is_current": "boolean"
+      }
+    }
+  }
+}

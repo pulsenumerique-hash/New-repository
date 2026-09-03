@@ -1,0 +1,6 @@
+{
+  "name": "BoutiquePro — Gestion de Boutique Alimentaire",
+  "description": "Application Android & PWA de gestion de boutique alimentaire : ventes cash/crédit, stock gros/détail, caisse, crédits clients, rôles Admin/Caissier et synchronisation multi-appareils en temps réel.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
