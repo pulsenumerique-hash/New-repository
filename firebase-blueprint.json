@@ -141,6 +141,49 @@
         "last_active": "string",
         "is_current": "boolean"
       }
+    },
+    "Supplier": {
+      "collection": "suppliers",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "name": "string",
+        "phone": "string",
+        "address": "string",
+        "debt_balance": "number",
+        "total_purchased": "number",
+        "total_paid": "number",
+        "notes": "string",
+        "created_at": "string",
+        "updated_at": "string"
+      }
+    },
+    "Expense": {
+      "collection": "expenses",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "category": "string",
+        "category_label": "string",
+        "amount": "number",
+        "description": "string",
+        "payment_method": "string",
+        "author_name": "string",
+        "date": "string",
+        "created_at": "string"
+      }
+    },
+    "BackupRecord": {
+      "collection": "backups",
+      "fields": {
+        "id": "string",
+        "boutique_id": "string",
+        "title": "string",
+        "item_count": "number",
+        "data_json": "string",
+        "created_by": "string",
+        "created_at": "string"
+      }
     }
   }
 }

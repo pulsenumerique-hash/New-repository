@@ -5,8 +5,42 @@ import {
   browserLocalPersistence,
   setPersistence,
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  memoryLocalCache,
+  getFirestore,
+  Firestore,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Intercept and prevent unhandled QuotaExceededError from restricted iframes or IndexedDB
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    if (
+      reason &&
+      (reason.name === 'QuotaExceededError' ||
+        String(reason.message || '').includes('QuotaExceededError') ||
+        String(reason.message || '').includes('createOrUpgrade'))
+    ) {
+      console.warn('Handled QuotaExceededError in restricted storage environment:', reason);
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const err = event.error;
+    const msg = event.message || '';
+    if (
+      (err && (err.name === 'QuotaExceededError' || String(err.message || '').includes('QuotaExceededError'))) ||
+      msg.includes('QuotaExceededError') ||
+      msg.includes('createOrUpgrade')
+    ) {
+      console.warn('Handled QuotaExceededError event in restricted storage environment:', event);
+      event.preventDefault();
+    }
+  });
+}
 
 // Initialize or reuse Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -25,10 +59,31 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Firestore Database (with support for custom firestoreDatabaseId if configured)
-export const db =
-  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
+// Firestore Database with Memory Local Cache
+// memoryLocalCache completely avoids QuotaExceededError in sandboxed iframe environments
+let dbInstance: Firestore;
+try {
+  const dbId =
+    firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+      ? firebaseConfig.firestoreDatabaseId
+      : undefined;
+
+  dbInstance = initializeFirestore(
+    app,
+    {
+      localCache: memoryLocalCache(),
+    },
+    dbId
+  );
+} catch {
+  // Fallback to getFirestore if already initialized
+  dbInstance =
+    firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+}
+
+export const db = dbInstance;
 
 export { firebaseConfig };
+

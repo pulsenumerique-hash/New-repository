@@ -74,7 +74,7 @@ class DatabaseService {
       id: boutiqueId,
       name: 'Superette Étoile du Sahel',
       owner_id: adminId,
-      initial_capital: 250000, // 250 000 FCFA
+      initial_capital: 0,
       currency: 'FCFA',
       created_at: now,
     };
@@ -287,6 +287,7 @@ class DatabaseService {
         payment_type: 'cash',
         cashier_id: cashierId,
         cashier_name: 'Moussa Koné',
+        status: 'completed',
         date: now,
         created_at: now,
       },
@@ -309,6 +310,7 @@ class DatabaseService {
         client_name: 'Mme Fatou Traoré',
         cashier_id: cashierId,
         cashier_name: 'Moussa Koné',
+        status: 'completed',
         date: now,
         created_at: now,
       }
@@ -693,6 +695,20 @@ class DatabaseService {
     const total_credits_en_cours = clients.reduce((acc, c) => acc + c.credit_balance, 0);
     const nb_clients_debiteurs = clients.filter((c) => c.credit_balance > 0).length;
 
+    // Ventes split
+    const completedSales = sales.filter((s) => s.status !== 'cancelled');
+    const ventes_cash_total = completedSales.filter((s) => s.payment_type === 'cash').reduce((acc, s) => acc + s.total_amount, 0);
+    const ventes_mobile_money_total = completedSales.filter((s) => s.payment_type === 'mobile_money').reduce((acc, s) => acc + s.total_amount, 0);
+    const ventes_credit_total = completedSales.filter((s) => s.payment_type === 'credit').reduce((acc, s) => acc + s.total_amount, 0);
+
+    // Bénéfice brut estimé
+    let benefice_brut_estime = 0;
+    for (const s of completedSales) {
+      for (const item of s.items) {
+        benefice_brut_estime += (item.unit_price - (item.unit_purchase_price || 0)) * item.quantity;
+      }
+    }
+
     // Solde de caisse = Capital initial + Injections + Ventes Cash + Remboursements reçus - Retraits
     const solde_caisse = initialCapital + totalInjections + totalCashSales + totalRefundsCash - totalWithdrawals;
 
@@ -701,12 +717,22 @@ class DatabaseService {
       ventes_jour,
       ventes_semaine,
       ventes_mois,
+      ventes_cash_total,
+      ventes_mobile_money_total,
+      ventes_credit_total,
       valeur_stock_achat,
       valeur_stock_vente,
       total_credits_en_cours,
       nb_clients_debiteurs,
+      nb_credits_en_retard: 0,
+      total_dettes_fournisseurs: 0,
+      total_depenses_mois: 0,
+      benefice_brut_estime,
+      benefice_net_reel: benefice_brut_estime,
       nb_produits: products.length,
       nb_produits_alerte,
+      nb_produits_perimes: 0,
+      nb_produits_bientot_perimes: 0,
       retraits_total: totalWithdrawals,
       injections_total: totalInjections,
     };

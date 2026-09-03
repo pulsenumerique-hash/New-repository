@@ -23,6 +23,11 @@ import {
   ActiveSession,
   DashboardStats,
   Boutique,
+  Supplier,
+  SupplierPayment,
+  Expense,
+  AuditLog,
+  User,
 } from '../types';
 
 export const firebaseDb = {
@@ -162,6 +167,63 @@ export const firebaseDb = {
     );
   },
 
+  subscribeSuppliers(boutiqueId: string, onUpdate: (suppliers: Supplier[]) => void): Unsubscribe {
+    const q = query(
+      collection(db, 'suppliers'),
+      where('boutique_id', '==', boutiqueId)
+    );
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: Supplier[] = [];
+        snapshot.forEach((doc) => {
+          list.push(doc.data() as Supplier);
+        });
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        onUpdate(list);
+      },
+      (err) => console.warn('Suppliers onSnapshot error:', err)
+    );
+  },
+
+  subscribeExpenses(boutiqueId: string, onUpdate: (expenses: Expense[]) => void): Unsubscribe {
+    const q = query(
+      collection(db, 'expenses'),
+      where('boutique_id', '==', boutiqueId)
+    );
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: Expense[] = [];
+        snapshot.forEach((doc) => {
+          list.push(doc.data() as Expense);
+        });
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        onUpdate(list);
+      },
+      (err) => console.warn('Expenses onSnapshot error:', err)
+    );
+  },
+
+  subscribeAuditLogs(boutiqueId: string, onUpdate: (logs: AuditLog[]) => void): Unsubscribe {
+    const q = query(
+      collection(db, 'audit_logs'),
+      where('boutique_id', '==', boutiqueId)
+    );
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: AuditLog[] = [];
+        snapshot.forEach((doc) => {
+          list.push(doc.data() as AuditLog);
+        });
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        onUpdate(list);
+      },
+      (err) => console.warn('Audit logs onSnapshot error:', err)
+    );
+  },
+
   // --- CRUD OPERATIONS (FIRESTORE) ---
 
   // 1. Products
@@ -257,14 +319,168 @@ export const firebaseDb = {
     await deleteDoc(doc(db, 'active_sessions', sessionId));
   },
 
-  // 8. Compute Local Dashboard Stats from live synchronized data
+  // 8. Suppliers (Fournisseurs)
+  async saveSupplier(supplier: Supplier): Promise<void> {
+    await setDoc(doc(db, 'suppliers', supplier.id), supplier);
+  },
+
+  async updateSupplier(id: string, updates: Partial<Supplier>): Promise<void> {
+    await updateDoc(doc(db, 'suppliers', id), {
+      ...updates,
+      updated_at: new Date().toISOString(),
+    });
+  },
+
+  async deleteSupplier(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'suppliers', id));
+  },
+
+  async saveSupplierPayment(payment: SupplierPayment, supplier?: Supplier): Promise<void> {
+    await setDoc(doc(db, 'supplier_payments', payment.id), payment);
+    if (supplier) {
+      const newDebt = Math.max(0, supplier.debt_balance - payment.amount);
+      const newPaid = supplier.total_paid + payment.amount;
+      await updateDoc(doc(db, 'suppliers', supplier.id), {
+        debt_balance: newDebt,
+        total_paid: newPaid,
+        updated_at: new Date().toISOString(),
+      }).catch((e) => console.warn('Could not update supplier balance:', e));
+    }
+  },
+
+  // 9. Expenses (Charges d'exploitation)
+  async saveExpense(expense: Expense): Promise<void> {
+    await setDoc(doc(db, 'expenses', expense.id), expense);
+  },
+
+  async deleteExpense(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'expenses', id));
+  },
+
+  // 10. Audit Logs (Journal d'activité)
+  async saveAuditLog(log: AuditLog): Promise<void> {
+    try {
+      await setDoc(doc(db, 'audit_logs', log.id), log);
+    } catch (e) {
+      console.warn('Could not save audit log to firestore:', e);
+    }
+  },
+
+  // 11. Sale Cancellation & Product Returns (Remise en stock + Ajustement Dette / Caisse)
+  async cancelSale(
+    sale: Sale,
+    reason: string,
+    cancelledByName: string,
+    products: Product[],
+    clients: Client[]
+  ): Promise<void> {
+    const cancelledAt = new Date().toISOString();
+
+    // 1. Update sale status in Firestore
+    await updateDoc(doc(db, 'sales', sale.id), {
+      status: 'cancelled',
+      cancellation_reason: reason,
+      cancelled_at: cancelledAt,
+      cancelled_by_name: cancelledByName,
+    });
+
+    // 2. Return items to stock
+    for (const item of sale.items) {
+      const prod = products.find((p) => p.id === item.product_id);
+      if (prod) {
+        const restoredUnitStock = prod.unit_stock + item.quantity;
+        const restoredPkgStock = prod.units_per_package > 0 ? Math.floor(restoredUnitStock / prod.units_per_package) : 0;
+        await updateDoc(doc(db, 'products', prod.id), {
+          unit_stock: restoredUnitStock,
+          package_stock: restoredPkgStock,
+          updated_at: cancelledAt,
+        }).catch((e) => console.warn('Could not restock product on cancellation:', e));
+      }
+    }
+
+    // 3. Deduct client credit debt if it was a credit sale
+    if (sale.payment_type === 'credit' && sale.client_id) {
+      const client = clients.find((c) => c.id === sale.client_id);
+      if (client) {
+        const newBalance = Math.max(0, client.credit_balance - sale.total_amount);
+        const newTotalPurchased = Math.max(0, client.total_credit_purchased - sale.total_amount);
+        await updateDoc(doc(db, 'clients', client.id), {
+          credit_balance: newBalance,
+          total_credit_purchased: newTotalPurchased,
+          updated_at: cancelledAt,
+        }).catch((e) => console.warn('Could not revert client debt on sale cancellation:', e));
+      }
+    }
+  },
+
+  // 12. Cloud Backups
+  async saveCloudBackup(
+    boutiqueId: string,
+    backupData: Record<string, unknown>,
+    authorName: string,
+    itemCount: number
+  ): Promise<string> {
+    const backupId = 'bck_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+    const docData = {
+      id: backupId,
+      boutique_id: boutiqueId,
+      title: `Sauvegarde Cloud du ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`,
+      item_count: itemCount,
+      data_json: JSON.stringify(backupData),
+      created_by: authorName,
+      created_at: new Date().toISOString(),
+    };
+    await setDoc(doc(db, 'backups', backupId), docData);
+    return backupId;
+  },
+
+  async getCloudBackups(boutiqueId: string): Promise<Array<{
+    id: string;
+    title: string;
+    item_count: number;
+    created_by: string;
+    created_at: string;
+    data_json: string;
+  }>> {
+    try {
+      const q = query(
+        collection(db, 'backups'),
+        where('boutique_id', '==', boutiqueId)
+      );
+      const snap = await getDocs(q);
+      const list: Array<{
+        id: string;
+        title: string;
+        item_count: number;
+        created_by: string;
+        created_at: string;
+        data_json: string;
+      }> = [];
+      snap.forEach((d) => list.push(d.data() as {
+        id: string;
+        title: string;
+        item_count: number;
+        created_by: string;
+        created_at: string;
+        data_json: string;
+      }));
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
+  // 13. Compute Local Dashboard Stats from live synchronized data
   calculateDashboardStats(
     boutique: Boutique,
     products: Product[],
     sales: Sale[],
     clients: Client[],
     refunds: Refund[],
-    movements: CashMovement[]
+    movements: CashMovement[],
+    suppliers: Supplier[] = [],
+    expenses: Expense[] = []
   ): DashboardStats {
     const initialCapital = boutique?.initial_capital || 0;
 
@@ -277,179 +493,167 @@ export const firebaseDb = {
     let ventes_jour = 0;
     let ventes_semaine = 0;
     let ventes_mois = 0;
-    let totalCashSales = 0;
+    let ventes_cash_total = 0;
+    let ventes_mobile_money_total = 0;
+    let ventes_credit_total = 0;
+    let benefice_brut_estime = 0;
 
     for (const s of sales) {
+      if (s.status === 'cancelled') continue; // Don't count cancelled sales
       const sTime = new Date(s.created_at).getTime();
       if (sTime >= startOfToday) ventes_jour += s.total_amount;
       if (sTime >= startOfWeek) ventes_semaine += s.total_amount;
       if (sTime >= startOfMonth) ventes_mois += s.total_amount;
-      if (s.payment_type === 'cash') totalCashSales += s.total_amount;
+
+      if (s.payment_type === 'cash') {
+        ventes_cash_total += s.total_amount;
+      } else if (s.payment_type === 'mobile_money') {
+        ventes_mobile_money_total += s.total_amount;
+      } else if (s.payment_type === 'credit') {
+        ventes_credit_total += s.total_amount;
+      }
+
+      // Compute estimated gross profit on sale items
+      if (s.items && Array.isArray(s.items)) {
+        for (const it of s.items) {
+          const cost = it.unit_purchase_price || 0;
+          const margin = (it.unit_price - cost) * it.quantity;
+          benefice_brut_estime += margin;
+        }
+      }
     }
 
     const totalRefundsCash = refunds.reduce((acc, r) => acc + r.amount, 0);
     const totalInjections = movements.filter((m) => m.type === 'injection').reduce((acc, m) => acc + m.amount, 0);
     const totalWithdrawals = movements.filter((m) => m.type === 'withdrawal').reduce((acc, m) => acc + m.amount, 0);
 
+    // Compute expenses
+    let total_depenses_mois = 0;
+    let totalExpensesCash = 0;
+    for (const exp of expenses) {
+      const expTime = new Date(exp.created_at).getTime();
+      if (expTime >= startOfMonth) {
+        total_depenses_mois += exp.amount;
+      }
+      if (exp.payment_method === 'cash') {
+        totalExpensesCash += exp.amount;
+      }
+    }
+
     let valeur_stock_achat = 0;
     let valeur_stock_vente = 0;
     let nb_produits_alerte = 0;
+    let nb_produits_perimes = 0;
+    let nb_produits_bientot_perimes = 0;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     for (const p of products) {
       valeur_stock_achat += (p.unit_stock || 0) * (p.unit_purchase_price || 0);
       valeur_stock_vente += (p.unit_stock || 0) * (p.unit_sale_price || 0);
-      if (p.min_alert_threshold && (p.unit_stock || 0) <= p.min_alert_threshold) {
+
+      // Low stock alert
+      const threshold = p.min_alert_threshold ?? 10;
+      if ((p.unit_stock || 0) <= threshold) {
         nb_produits_alerte++;
+      }
+
+      // Expiration check
+      if (p.expiration_date) {
+        if (p.expiration_date < todayStr) {
+          nb_produits_perimes++;
+        } else if (p.expiration_date <= sevenDaysLater) {
+          nb_produits_bientot_perimes++;
+        }
       }
     }
 
     const total_credits_en_cours = clients.reduce((acc, c) => acc + (c.credit_balance || 0), 0);
     const nb_clients_debiteurs = clients.filter((c) => (c.credit_balance || 0) > 0).length;
 
-    const solde_caisse = initialCapital + totalInjections + totalCashSales + totalRefundsCash - totalWithdrawals;
+    // Overdue credits
+    const nb_credits_en_retard = clients.filter((c) => {
+      if ((c.credit_balance || 0) <= 0) return false;
+      if (!c.due_date) return false;
+      return c.due_date < todayStr;
+    }).length;
+
+    const total_dettes_fournisseurs = suppliers.reduce((acc, s) => acc + (s.debt_balance || 0), 0);
+
+    const benefice_net_reel = benefice_brut_estime - total_depenses_mois;
+
+    // Solde de caisse = Capital initial + Injections + Ventes espèces + Remboursements espèces reçus - Retraits - Dépenses espèces
+    const solde_caisse =
+      initialCapital + totalInjections + ventes_cash_total + totalRefundsCash - totalWithdrawals - totalExpensesCash;
 
     return {
       solde_caisse,
       ventes_jour,
       ventes_semaine,
       ventes_mois,
+      ventes_cash_total,
+      ventes_mobile_money_total,
+      ventes_credit_total,
       valeur_stock_achat,
       valeur_stock_vente,
       total_credits_en_cours,
       nb_clients_debiteurs,
+      nb_credits_en_retard,
+      total_dettes_fournisseurs,
+      total_depenses_mois,
+      benefice_brut_estime,
+      benefice_net_reel,
       nb_produits: products.length,
       nb_produits_alerte,
+      nb_produits_perimes,
+      nb_produits_bientot_perimes,
       retraits_total: totalWithdrawals,
       injections_total: totalInjections,
     };
   },
 
-  // Seed sample products and clients if new boutique is completely empty
-  async seedInitialBoutiqueData(boutiqueId: string, adminId: string, adminName: string): Promise<void> {
-    const productsSnap = await getDocs(
-      query(collection(db, 'products'), where('boutique_id', '==', boutiqueId))
+  // Seed sample products and clients: STRICTLY DISABLED to guarantee blank state on new accounts
+  async seedInitialBoutiqueData(_boutiqueId: string, _adminId: string, _adminName: string): Promise<void> {
+    return Promise.resolve();
+  },
+
+  async updateBoutique(boutiqueId: string, settings: Partial<Boutique>): Promise<void> {
+    await updateDoc(doc(db, 'boutiques', boutiqueId), {
+      ...settings,
+      updated_at: new Date().toISOString(),
+    });
+  },
+
+  // --- CASHIERS MANAGEMENT ---
+  subscribeCashiers(boutiqueId: string, onUpdate: (cashiers: User[]) => void): Unsubscribe {
+    const q = query(
+      collection(db, 'cashiers'),
+      where('boutique_id', '==', boutiqueId)
     );
-    if (!productsSnap.empty) return;
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: User[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as User);
+        });
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        onUpdate(list);
+      },
+      (err) => console.warn('Cashiers onSnapshot error:', err)
+    );
+  },
 
-    const now = new Date().toISOString();
-    const defaultProducts: Product[] = [
-      {
-        id: 'prod_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Bonbons Menthe Fraîche',
-        category: 'Confiserie',
-        package_type: 'Paquet',
-        package_purchase_price: 1000,
-        units_per_package: 20,
-        unit_purchase_price: 50,
-        unit_sale_price: 75,
-        package_stock: 5,
-        unit_stock: 100,
-        min_alert_threshold: 20,
-        barcode: '600123456789',
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'prod_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Riz Parfumé Jasmin 50kg',
-        category: 'Céréales & Riz',
-        package_type: 'Sac 50kg',
-        package_purchase_price: 22000,
-        units_per_package: 50,
-        unit_purchase_price: 440,
-        unit_sale_price: 600,
-        package_stock: 4,
-        unit_stock: 200,
-        min_alert_threshold: 25,
-        barcode: '600987654321',
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'prod_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Huile Végétale Dinor 5L (bouteille 1L)',
-        category: 'Huiles & Condiments',
-        package_type: 'Carton 4 Bidons',
-        package_purchase_price: 24000,
-        units_per_package: 4,
-        unit_purchase_price: 6000,
-        unit_sale_price: 7200,
-        package_stock: 3,
-        unit_stock: 12,
-        min_alert_threshold: 4,
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'prod_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Lait Concentré Sucré Bonnet Rouge',
-        category: 'Produits Laitiers',
-        package_type: 'Carton 48 Boîtes',
-        package_purchase_price: 24000,
-        units_per_package: 48,
-        unit_purchase_price: 500,
-        unit_sale_price: 650,
-        package_stock: 2,
-        unit_stock: 96,
-        min_alert_threshold: 15,
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'prod_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Sucre Blanc Saint Louis (Morceaux)',
-        category: 'Épicerie',
-        package_type: 'Carton 25 paquets 1kg',
-        package_purchase_price: 18750,
-        units_per_package: 25,
-        unit_purchase_price: 750,
-        unit_sale_price: 900,
-        package_stock: 3,
-        unit_stock: 75,
-        min_alert_threshold: 10,
-        created_at: now,
-        updated_at: now,
-      },
-    ];
+  async createCashier(cashier: User): Promise<void> {
+    await setDoc(doc(db, 'cashiers', cashier.id), cashier);
+  },
 
-    for (const p of defaultProducts) {
-      await setDoc(doc(db, 'products', p.id), p);
-    }
+  async updateCashier(id: string, updates: Partial<User>): Promise<void> {
+    await updateDoc(doc(db, 'cashiers', id), updates);
+  },
 
-    const defaultClients: Client[] = [
-      {
-        id: 'cli_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Mme Fatou Traoré',
-        phone: '+221 77 123 45 67',
-        credit_balance: 14500,
-        total_credit_purchased: 34500,
-        total_repaid: 20000,
-        notes: 'Voisine du quartier - paie à la fin du mois',
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'cli_' + Math.random().toString(36).substring(2, 9),
-        boutique_id: boutiqueId,
-        name: 'Ousmane Cissé (Atelier Menuiserie)',
-        phone: '+221 70 987 65 43',
-        credit_balance: 8250,
-        total_credit_purchased: 18250,
-        total_repaid: 10000,
-        notes: 'Remboursement hebdomadaire chaque vendredi',
-        created_at: now,
-        updated_at: now,
-      },
-    ];
-
-    for (const c of defaultClients) {
-      await setDoc(doc(db, 'clients', c.id), c);
-    }
+  async deleteCashier(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'cashiers', id));
   },
 };

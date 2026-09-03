@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   UserCheck,
   Plus,
@@ -13,14 +13,13 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
+import { useApp } from '../../context/AppContext';
 import { User as UserType } from '../../types';
 import { formatDate } from '../../lib/formatters';
 
 export const CashierManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [cashiers, setCashiers] = useState<UserType[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { cashiers, createCashier, toggleCashierStatus, deleteCashier } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form state
@@ -30,22 +29,7 @@ export const CashierManagement: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const fetchCashiers = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api.getCashiers();
-      setCashiers(res.cashiers);
-    } catch (err) {
-      console.error('Error fetching cashiers:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCashiers();
-  }, []);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleCreateCashier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +47,7 @@ export const CashierManagement: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await api.createCashier({
+      await createCashier({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
@@ -74,7 +58,8 @@ export const CashierManagement: React.FC = () => {
       setLastName('');
       setEmail('');
       setPassword('');
-      fetchCashiers();
+      setFeedback({ type: 'success', message: 'Caissier enregistré avec succès.' });
+      setTimeout(() => setFeedback(null), 3500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur création caissier';
       setErrorMsg(msg);
@@ -85,28 +70,50 @@ export const CashierManagement: React.FC = () => {
 
   const handleToggleStatus = async (cashier: UserType) => {
     try {
-      await api.toggleCashierStatus(cashier.id, !cashier.is_active);
-      setCashiers((prev) =>
-        prev.map((c) => (c.id === cashier.id ? { ...c, is_active: !c.is_active } : c))
-      );
+      await toggleCashierStatus(cashier.id, !cashier.is_active);
+      setFeedback({
+        type: 'success',
+        message: `Compte ${cashier.first_name} ${!cashier.is_active ? 'activé' : 'désactivé'}.`,
+      });
+      setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
-      alert('Erreur modification statut');
+      setFeedback({ type: 'error', message: 'Erreur lors de la mise à jour du statut.' });
+      setTimeout(() => setFeedback(null), 3000);
     }
   };
 
   const handleDeleteCashier = async (cashier: UserType) => {
     if (confirm(`Confirmez-vous la suppression du compte de ${cashier.first_name} ${cashier.last_name} ?`)) {
       try {
-        await api.deleteCashier(cashier.id);
-        setCashiers((prev) => prev.filter((c) => c.id !== cashier.id));
+        await deleteCashier(cashier.id);
+        setFeedback({ type: 'success', message: `Compte ${cashier.first_name} ${cashier.last_name} supprimé.` });
+        setTimeout(() => setFeedback(null), 3000);
       } catch (err) {
-        alert('Erreur suppression caissier');
+        setFeedback({ type: 'error', message: 'Erreur lors de la suppression du caissier.' });
+        setTimeout(() => setFeedback(null), 3000);
       }
     }
   };
 
   return (
     <div className="space-y-6">
+      {feedback && (
+        <div
+          className={`p-4 rounded-2xl flex items-center gap-3 text-xs font-bold transition animate-in fade-in ${
+            feedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}
+        >
+          {feedback.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{feedback.message}</span>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-black text-slate-900 flex items-center gap-2.5">

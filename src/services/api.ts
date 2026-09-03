@@ -45,6 +45,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      setStoredToken(null);
+    }
     const errorMsg = data.error || data.message || `Erreur serveur (${response.status})`;
     throw new Error(errorMsg);
   }
@@ -54,6 +57,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   // Auth
+  syncSession: (user: Partial<User>) =>
+    request<{
+      message: string;
+      token: string;
+      user: User;
+      boutique: Boutique;
+      session_id: string;
+    }>('/api/auth/sync-session', {
+      method: 'POST',
+      body: JSON.stringify(user),
+    }),
   register: (payload: {
     first_name: string;
     last_name: string;

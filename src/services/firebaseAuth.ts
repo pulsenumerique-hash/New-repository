@@ -80,7 +80,7 @@ export const firebaseAuthService = {
       id: boutiqueId,
       name: boutiqueName.trim(),
       owner_id: fbUser.uid,
-      initial_capital: 100000,
+      initial_capital: 0,
       currency: 'FCFA',
       created_at: now,
     };
@@ -141,7 +141,7 @@ export const firebaseAuthService = {
         id: boutiqueId,
         name: 'Ma Boutique Pro',
         owner_id: fbUser.uid,
-        initial_capital: 100000,
+        initial_capital: 0,
         currency: 'FCFA',
         created_at: now,
       };
@@ -192,7 +192,7 @@ export const firebaseAuthService = {
           id: user.boutique_id,
           name: 'Ma Boutique Pro',
           owner_id: fbUser.uid,
-          initial_capital: 100000,
+          initial_capital: 0,
           currency: 'FCFA',
           created_at: now,
         };
@@ -233,7 +233,7 @@ export const firebaseAuthService = {
         id: boutiqueId,
         name: `Boutique de ${firstName}`,
         owner_id: fbUser.uid,
-        initial_capital: 150000,
+        initial_capital: 0,
         currency: 'FCFA',
         created_at: now,
       };
@@ -290,7 +290,7 @@ export const firebaseAuthService = {
           id: user.boutique_id,
           name: `Boutique de ${user.first_name}`,
           owner_id: fbUser.uid,
-          initial_capital: 150000,
+          initial_capital: 0,
           currency: 'FCFA',
           created_at: now,
         };
@@ -431,7 +431,7 @@ export const firebaseAuthService = {
                 id: user.boutique_id,
                 name: 'Ma Boutique Pro',
                 owner_id: user.id,
-                initial_capital: 100000,
+                initial_capital: 0,
                 currency: 'FCFA',
                 created_at: new Date().toISOString(),
               };
@@ -452,7 +452,7 @@ export const firebaseAuthService = {
             id: boutiqueId,
             name: `Boutique de ${nameParts[0]}`,
             owner_id: fbUser.uid,
-            initial_capital: 100000,
+            initial_capital: 0,
             currency: 'FCFA',
             created_at: now,
           };

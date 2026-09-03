@@ -14,6 +14,11 @@ import {
   X,
   History,
   Phone,
+  MessageSquare,
+  Send,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,10 +26,11 @@ import { Client, Refund } from '../../types';
 import { formatCurrency, formatDate, formatDateShort } from '../../lib/formatters';
 
 export const CreditManagement: React.FC = () => {
-  const { clients, sales, refunds, createClient, deleteClient, createRefund } = useApp();
+  const { clients, sales, refunds, boutique, createClient, deleteClient, createRefund } = useApp();
   const { role } = useAuth();
 
   const [search, setSearch] = useState('');
+  const [filterMode, setFilterMode] = useState<'all' | 'debtors'>('all');
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
 
   // New Client Modal
@@ -40,6 +46,10 @@ export const CreditManagement: React.FC = () => {
   const [refundNote, setRefundNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Reminder Modal
+  const [reminderClient, setReminderClient] = useState<Client | null>(null);
+  const [copiedReminder, setCopiedReminder] = useState(false);
 
   // Total credit in circulation
   const totalCreditDebt = clients.reduce((sum, c) => sum + c.credit_balance, 0);
@@ -132,10 +142,26 @@ export const CreditManagement: React.FC = () => {
     }
   };
 
-  const filteredClients = clients.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone && c.phone.includes(search))
-  );
+  const filteredClients = clients.filter((c) => {
+    const matchesSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.phone && c.phone.includes(search));
+    const matchesMode = filterMode === 'all' || c.credit_balance > 0;
+    return matchesSearch && matchesMode;
+  });
+
+  const getReminderMessage = (client: Client) => {
+    const shopName = boutique?.name || 'BoutiquePro';
+    return `Bonjour ${client.name}, nous vous rappelons amicalement qu'un solde restant de ${formatCurrency(
+      client.credit_balance
+    )} est actuellement en attente de règlement chez ${shopName}. Merci de passer en boutique dès que possible pour régulariser votre compte. Excellente journée !`;
+  };
+
+  const handleCopyReminder = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedReminder(true);
+    setTimeout(() => setCopiedReminder(false), 3000);
+  };
 
   return (
     <div className="space-y-6">
@@ -202,15 +228,43 @@ export const CreditManagement: React.FC = () => {
         {/* Clients Table Bento Box (8 cols) */}
         <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-4 top-3 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher par nom ou téléphone..."
-                className="w-full pl-10 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-2xs"
-              />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute left-4 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Nom ou tél..."
+                  className="w-full pl-10 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                />
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('all')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition ${
+                    filterMode === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Tous ({clients.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('debtors')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition ${
+                    filterMode === 'debtors'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-rose-700 hover:text-rose-900'
+                  }`}
+                >
+                  Débiteurs ({debtorClientsCount})
+                </button>
+              </div>
             </div>
 
             <button
@@ -291,16 +345,30 @@ export const CreditManagement: React.FC = () => {
 
                         <td className="py-3.5 px-4 text-center">
                           {hasDebt ? (
-                            <button
-                              id={`btn-refund-${client.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenRefund(client);
-                              }}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95"
-                            >
-                              Encaisser
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                id={`btn-refund-${client.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenRefund(client);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95"
+                              >
+                                Encaisser
+                              </button>
+                              <button
+                                id={`btn-remind-${client.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReminderClient(client);
+                                  setCopiedReminder(false);
+                                }}
+                                className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl border border-sky-200 transition"
+                                title="Envoyer une relance amicale (WhatsApp / SMS)"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                               À jour (0 FCFA)
@@ -597,6 +665,111 @@ export const CreditManagement: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RELANCE CLIENT AMICALE */}
+      {reminderClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">Relance Créance Client</h3>
+                  <p className="text-[11px] text-slate-500">Rappel amical et personnalisé</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReminderClient(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between font-bold text-slate-900">
+                <span>Client :</span>
+                <span>{reminderClient.name}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Téléphone :</span>
+                <span>{reminderClient.phone || 'Non renseigné'}</span>
+              </div>
+              <div className="flex justify-between font-black text-rose-700 pt-1 border-t border-slate-200">
+                <span>Solde à régulariser :</span>
+                <span>{formatCurrency(reminderClient.credit_balance)}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Message généré :
+              </label>
+              <div className="p-3.5 bg-sky-50/60 border border-sky-200 rounded-2xl text-xs text-sky-950 font-medium leading-relaxed">
+                {getReminderMessage(reminderClient)}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleCopyReminder(getReminderMessage(reminderClient))}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition"
+              >
+                {copiedReminder ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>Copié !</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-slate-600" />
+                    <span>Copier texte</span>
+                  </>
+                )}
+              </button>
+
+              {reminderClient.phone ? (
+                <a
+                  href={`https://wa.me/${reminderClient.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                    getReminderMessage(reminderClient)
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>WhatsApp</span>
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl cursor-not-allowed"
+                >
+                  <span>Pas de tél</span>
+                </button>
+              )}
+            </div>
+
+            {reminderClient.phone && (
+              <div className="text-center">
+                <a
+                  href={`sms:${reminderClient.phone}?body=${encodeURIComponent(
+                    getReminderMessage(reminderClient)
+                  )}`}
+                  className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 inline-flex items-center gap-1"
+                >
+                  <span>Ou envoyer par SMS standard</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

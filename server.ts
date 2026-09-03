@@ -74,7 +74,7 @@ app.post('/api/auth/register', async (req, res) => {
       id: boutiqueId,
       name: boutique_name.trim(),
       owner_id: userId,
-      initial_capital: 100000, // 100 000 FCFA capital de départ par défaut
+      initial_capital: 0,
       currency: 'FCFA',
       created_at: now,
     };
@@ -240,7 +240,7 @@ app.post('/api/auth/google', async (req, res) => {
         id: boutiqueId,
         name: `Boutique de ${firstName}`,
         owner_id: userId,
-        initial_capital: 150000,
+        initial_capital: 0,
         currency: 'FCFA',
         created_at: now,
       };
@@ -303,6 +303,92 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     res.status(500).json({ error: 'Erreur authentification Google : ' + message });
+  }
+});
+
+// 3b. Synchronisation de session utilisateur (Firebase / multi-connexion)
+app.post('/api/auth/sync-session', async (req, res) => {
+  try {
+    const { id, email, first_name, last_name, role, boutique_id } = req.body;
+    if (!id || !email) {
+      return res.status(400).json({ error: 'Identifiant et e-mail requis pour synchroniser la session.' });
+    }
+
+    const now = new Date().toISOString();
+    let userWithHash = db.findUserById(id) || db.findUserByEmail(email);
+
+    if (!userWithHash) {
+      const btqId = boutique_id || 'btq_' + Math.random().toString(36).substring(2, 9);
+      let btq = db.getBoutique(btqId);
+      if (!btq) {
+        btq = {
+          id: btqId,
+          name: `Boutique de ${first_name || 'Commerçant'}`,
+          owner_id: id,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: now,
+        };
+        db.createBoutique(btq);
+      }
+
+      const salt = bcrypt.genSaltSync(10);
+      const autoPassword = bcrypt.hashSync('Sync_' + Math.random().toString(36), salt);
+      const createdUser = db.createUser({
+        id,
+        email: email.trim().toLowerCase(),
+        first_name: first_name || 'Utilisateur',
+        last_name: last_name || '',
+        role: role || 'admin',
+        boutique_id: btqId,
+        is_active: true,
+        password_hash: autoPassword,
+        created_at: now,
+        last_login: now,
+      });
+      userWithHash = db.findUserById(createdUser.id);
+    } else {
+      db.updateUser(userWithHash.id, {
+        last_login: now,
+        is_active: true,
+        ...(first_name ? { first_name } : {}),
+        ...(last_name ? { last_name } : {}),
+        ...(boutique_id ? { boutique_id } : {}),
+      });
+      userWithHash = db.findUserById(userWithHash.id);
+    }
+
+    const { password_hash, ...safeUser } = userWithHash!;
+    const sessionId = 'ses_' + Math.random().toString(36).substring(2, 9);
+    const deviceInfo = extractDeviceInfo(req);
+
+    const session: ActiveSession = {
+      id: sessionId,
+      user_id: safeUser.id,
+      user_name: `${safeUser.first_name} ${safeUser.last_name}`.trim(),
+      boutique_id: safeUser.boutique_id,
+      device_name: deviceInfo.deviceName,
+      device_type: deviceInfo.deviceType,
+      browser: deviceInfo.browser,
+      ip: req.ip || '127.0.0.1',
+      last_active: now,
+      is_current: true,
+    };
+    db.createSession(session);
+
+    const token = generateToken(safeUser, sessionId);
+    const boutique = db.getBoutique(safeUser.boutique_id);
+
+    res.json({
+      message: 'Session synchronisée avec succès.',
+      token,
+      user: safeUser,
+      boutique,
+      session_id: sessionId,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: 'Erreur synchronisation session : ' + message });
   }
 });
 
@@ -690,6 +776,7 @@ app.post('/api/sales', authMiddleware, (req: AuthRequest, res) => {
       client_name: payment_type === 'credit' ? finalClientName : null,
       cashier_id: req.user!.id,
       cashier_name: `${req.user!.first_name} ${req.user!.last_name}`,
+      status: 'completed',
       date: now,
       created_at: now,
     };

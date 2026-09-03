@@ -18,6 +18,9 @@ import {
   ShieldAlert,
   FileText,
   Bell,
+  Calendar,
+  Clock,
+  Truck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -28,16 +31,20 @@ import { QuickRestockModal } from './QuickRestockModal';
 import { SupplierOrderModal } from './SupplierOrderModal';
 
 export const ProductManagement: React.FC = () => {
-  const { products, createProduct, updateProduct, deleteProduct } = useApp();
+  const { products, suppliers, createProduct, updateProduct, deleteProduct } = useApp();
   const { role } = useAuth();
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'alert' | 'out' | 'healthy'>('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState<
+    'all' | 'alert' | 'out' | 'healthy' | 'expired' | 'expiring_soon'
+  >('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [quickRestockProduct, setQuickRestockProduct] = useState<Product | null>(null);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Form states with automatic conversion gros -> détail
   const [name, setName] = useState('');
@@ -50,8 +57,28 @@ export const ProductManagement: React.FC = () => {
   const [unitStock, setUnitStock] = useState<number | ''>(100);
   const [minAlertThreshold, setMinAlertThreshold] = useState<number | ''>(15);
   const [barcode, setBarcode] = useState('');
+  const [expirationDate, setExpirationDate] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Expiration helper
+  const getExpirationStatus = (expDate?: string) => {
+    if (!expDate) return { status: 'none', label: 'Aucune', days: 999 };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(expDate);
+    exp.setHours(0, 0, 0, 0);
+    const diffTime = exp.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) {
+      return { status: 'expired', label: `Périmé (${Math.abs(diffDays)}j)`, days: diffDays };
+    }
+    if (diffDays <= 7) {
+      return { status: 'warning', label: `Expire dans ${diffDays}j (J-7)`, days: diffDays };
+    }
+    return { status: 'good', label: `${diffDays}j restants`, days: diffDays };
+  };
 
   // Calcul automatique obligatoire : Prix d'achat du conditionnement ÷ Nombre d'unités
   const computedUnitPurchasePrice = useMemo(() => {
@@ -85,6 +112,8 @@ export const ProductManagement: React.FC = () => {
     setUnitStock(100);
     setMinAlertThreshold(15);
     setBarcode('');
+    setExpirationDate('');
+    setSupplierId('');
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -102,6 +131,8 @@ export const ProductManagement: React.FC = () => {
     setUnitStock(prod.unit_stock);
     setMinAlertThreshold(prod.min_alert_threshold);
     setBarcode(prod.barcode || '');
+    setExpirationDate(prod.expiration_date || '');
+    setSupplierId(prod.supplier_id || '');
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -146,6 +177,8 @@ export const ProductManagement: React.FC = () => {
         unit_stock: Number(unitStock) || 0,
         min_alert_threshold: Number(minAlertThreshold) || 10,
         barcode: barcode.trim() || undefined,
+        expiration_date: expirationDate.trim() || undefined,
+        supplier_id: supplierId.trim() || undefined,
       };
 
       if (editingProduct) {
@@ -163,13 +196,24 @@ export const ProductManagement: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, prodName: string) => {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer le produit "${prodName}" ?`)) {
-      try {
-        await deleteProduct(id);
-      } catch (err) {
-        alert('Erreur lors de la suppression');
+  const handleRequestDelete = (prod: Product) => {
+    setProductToDelete(prod);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+    setIsDeletingProduct(true);
+    try {
+      await deleteProduct(productToDelete.id);
+      setProductToDelete(null);
+      if (editingProduct?.id === productToDelete.id) {
+        setIsModalOpen(false);
+        setEditingProduct(null);
       }
+    } catch (err: unknown) {
+      alert('Erreur lors de la suppression du produit');
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
@@ -183,6 +227,20 @@ export const ProductManagement: React.FC = () => {
 
   const healthyProducts = useMemo(() => {
     return products.filter((p) => (p.unit_stock || 0) > (p.min_alert_threshold ?? 10));
+  }, [products]);
+
+  const expiredProducts = useMemo(() => {
+    return products.filter((p) => {
+      if (!p.expiration_date) return false;
+      return getExpirationStatus(p.expiration_date).status === 'expired';
+    });
+  }, [products]);
+
+  const expiringSoonProducts = useMemo(() => {
+    return products.filter((p) => {
+      if (!p.expiration_date) return false;
+      return getExpirationStatus(p.expiration_date).status === 'warning';
+    });
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -201,6 +259,10 @@ export const ProductManagement: React.FC = () => {
         matchesStockStatus = (p.unit_stock || 0) <= 0;
       } else if (stockStatusFilter === 'healthy') {
         matchesStockStatus = (p.unit_stock || 0) > threshold;
+      } else if (stockStatusFilter === 'expired') {
+        matchesStockStatus = getExpirationStatus(p.expiration_date).status === 'expired';
+      } else if (stockStatusFilter === 'expiring_soon') {
+        matchesStockStatus = getExpirationStatus(p.expiration_date).status === 'warning';
       }
 
       return matchesSearch && matchesCat && matchesStockStatus;
@@ -219,7 +281,7 @@ export const ProductManagement: React.FC = () => {
       />
 
       {/* Top Bento Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center font-bold shrink-0">
             <Package className="w-6 h-6" />
@@ -257,11 +319,36 @@ export const ProductManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          {lowStockProducts.length > 0 && (
-            <span className="text-[10px] bg-amber-200/80 text-amber-900 font-extrabold px-2.5 py-1 rounded-xl">
-              {stockStatusFilter === 'alert' ? 'Filtre actif' : 'Filtrer'}
-            </span>
-          )}
+        </div>
+
+        <div
+          onClick={() => setStockStatusFilter((prev) => (prev === 'expiring_soon' ? 'all' : 'expiring_soon'))}
+          className={`p-5 rounded-3xl border shadow-sm flex items-center justify-between gap-4 cursor-pointer transition active:scale-98 ${
+            expiringSoonProducts.length > 0 || expiredProducts.length > 0
+              ? 'bg-rose-50/80 border-rose-300 hover:bg-rose-100/80'
+              : 'bg-white border-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold shrink-0 border ${
+              expiredProducts.length > 0
+                ? 'bg-rose-100 text-rose-700 border-rose-200 animate-pulse'
+                : expiringSoonProducts.length > 0
+                ? 'bg-amber-100 text-amber-700 border-amber-200'
+                : 'bg-slate-50 text-slate-400 border-slate-200'
+            }`}>
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Péremptions</div>
+              <div className="text-2xl font-black text-rose-950 mt-0.5">
+                {expiredProducts.length + expiringSoonProducts.length}
+              </div>
+              <div className="text-[10px] text-rose-800 font-medium">
+                {expiredProducts.length} périmé(s) • {expiringSoonProducts.length} à J-7
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -286,7 +373,7 @@ export const ProductManagement: React.FC = () => {
             <span>Catalogue Produits & Stock (Gros → Détail)</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1 font-medium">
-            Conversion automatique du prix d'achat au conditionnement vers l'unité de vente et gestion proactive des seuils d'alerte.
+            Conversion automatique du prix d'achat au conditionnement vers l'unité de vente, dates de péremption et gestion proactive des seuils d'alerte.
           </p>
         </div>
 
@@ -396,11 +483,53 @@ export const ProductManagement: React.FC = () => {
             }`}
           >
             <AlertCircle className="w-3.5 h-3.5" />
-            <span>Ruptures (0 unité)</span>
+            <span>Ruptures (0 u)</span>
             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
               stockStatusFilter === 'out' ? 'bg-rose-800 text-white' : 'bg-rose-200 text-rose-900'
             }`}>
               {outOfStockProducts.length}
+            </span>
+          </button>
+
+          {/* Expired Filter */}
+          <button
+            id="filter-status-expired"
+            onClick={() => setStockStatusFilter('expired')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              stockStatusFilter === 'expired'
+                ? 'bg-rose-900 text-white shadow-xs'
+                : expiredProducts.length > 0
+                ? 'bg-rose-100 text-rose-900 border border-rose-300 hover:bg-rose-200'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+            <span>Périmés</span>
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+              stockStatusFilter === 'expired' ? 'bg-rose-950 text-white' : 'bg-rose-200 text-rose-900'
+            }`}>
+              {expiredProducts.length}
+            </span>
+          </button>
+
+          {/* Expiring Soon J-7 Filter */}
+          <button
+            id="filter-status-expiring-soon"
+            onClick={() => setStockStatusFilter('expiring_soon')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              stockStatusFilter === 'expiring_soon'
+                ? 'bg-amber-700 text-white shadow-xs'
+                : expiringSoonProducts.length > 0
+                ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Expire sous 7j (J-7)</span>
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+              stockStatusFilter === 'expiring_soon' ? 'bg-amber-900 text-white' : 'bg-amber-200 text-amber-900'
+            }`}>
+              {expiringSoonProducts.length}
             </span>
           </button>
 
@@ -431,6 +560,7 @@ export const ProductManagement: React.FC = () => {
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <th className="py-3.5 px-5">Produit & Catégorie</th>
+                <th className="py-3.5 px-4">Péremption</th>
                 <th className="py-3.5 px-4">Conditionnement (Gros)</th>
                 <th className="py-3.5 px-4 text-center">Unités / Pqt</th>
                 <th className="py-3.5 px-4 text-right">Prix Achat Gros</th>
@@ -444,7 +574,7 @@ export const ProductManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     Aucun produit ne correspond aux critères.
                   </td>
@@ -455,15 +585,47 @@ export const ProductManagement: React.FC = () => {
                   const isOut = p.unit_stock <= 0;
                   const margin = p.unit_sale_price - p.unit_purchase_price;
                   const marginPct = p.unit_purchase_price > 0 ? Math.round((margin / p.unit_purchase_price) * 100) : 0;
+                  const expStatus = getExpirationStatus(p.expiration_date);
 
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/70 transition">
                       <td className="py-3.5 px-5">
                         <div className="font-extrabold text-slate-900 text-sm">{p.name}</div>
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          {p.category} {p.barcode ? `• Code: ${p.barcode}` : ''}
+                        <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
+                          <span>{p.category}</span>
+                          {p.barcode && <span>• Code: {p.barcode}</span>}
+                          {p.supplier_id && (
+                            <span className="text-teal-700 bg-teal-50 px-1.5 py-0.2 rounded-md font-bold">
+                              Fournisseur: {suppliers.find((s) => s.id === p.supplier_id)?.name || 'Assoc.'}
+                            </span>
+                          )}
                         </div>
                       </td>
+
+                      {/* Expiration Date Column */}
+                      <td className="py-3.5 px-4">
+                        {p.expiration_date ? (
+                          expStatus.status === 'expired' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-900 border border-rose-300 animate-pulse">
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              <span>{expStatus.label}</span>
+                            </span>
+                          ) : expStatus.status === 'warning' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-950 border border-amber-300">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              <span>{expStatus.label}</span>
+                            </span>
+                          ) : (
+                            <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>{formatDateShort(p.expiration_date)}</span>
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-slate-400 text-[11px] italic">Non définie</span>
+                        )}
+                      </td>
+
                       <td className="py-3.5 px-4 font-semibold text-slate-700">
                         {p.package_type}
                       </td>
@@ -492,22 +654,32 @@ export const ProductManagement: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         {isOut ? (
-                          <div className="flex flex-col items-center">
-                            <span className="px-2.5 py-1 rounded-full bg-rose-100 border border-rose-300 text-rose-800 font-extrabold text-[10px] flex items-center gap-1 shadow-xs">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-300 text-rose-800 font-extrabold text-[10px] flex items-center gap-1 shadow-xs">
                               <AlertTriangle className="w-3 h-3 text-rose-600" />
                               <span>Rupture (0)</span>
                             </span>
+                            <button
+                              id={`btn-stock-alert-restock-${p.id}`}
+                              type="button"
+                              onClick={() => setQuickRestockProduct(p)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[10px] flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer"
+                              title="Réapprovisionner immédiatement"
+                            >
+                              <Boxes className="w-3 h-3" />
+                              <span>Réapprovisionner</span>
+                            </button>
                             <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
                               Seuil: {p.min_alert_threshold ?? 10} u
                             </span>
                           </div>
                         ) : isLow ? (
-                          <div className="flex flex-col items-center">
-                            <span className="px-2.5 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-950 font-black text-xs flex items-center gap-1 shadow-xs">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-950 font-black text-xs flex items-center gap-1 shadow-xs">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                               <span>{p.unit_stock} / {p.min_alert_threshold ?? 10} u</span>
                             </span>
-                            <div className="w-16 h-1 bg-amber-200 rounded-full mt-1 overflow-hidden">
+                            <div className="w-16 h-1 bg-amber-200 rounded-full mt-0.5 overflow-hidden">
                               <div
                                 className="h-full bg-amber-600 rounded-full"
                                 style={{
@@ -515,7 +687,17 @@ export const ProductManagement: React.FC = () => {
                                 }}
                               />
                             </div>
-                            <span className="text-[10px] text-amber-800 font-bold mt-0.5">
+                            <button
+                              id={`btn-stock-alert-restock-${p.id}`}
+                              type="button"
+                              onClick={() => setQuickRestockProduct(p)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer"
+                              title="Réapprovisionner immédiatement"
+                            >
+                              <Boxes className="w-3 h-3 text-slate-950" />
+                              <span>Réapprovisionner</span>
+                            </button>
+                            <span className="text-[10px] text-amber-800 font-bold">
                               {p.package_stock} {p.package_type}(s)
                             </span>
                           </div>
@@ -532,31 +714,34 @@ export const ProductManagement: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Quick Restock Action Button */}
+                          {/* Restock Button for EVERY Product */}
                           <button
                             id={`btn-table-restock-${p.id}`}
+                            type="button"
                             onClick={() => setQuickRestockProduct(p)}
-                            title="Réassort rapide (+)"
-                            className="px-2 py-1.5 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition flex items-center gap-1 font-bold text-xs active:scale-95 shadow-2xs"
+                            title={`Réapprovisionner ${p.name}`}
+                            className="px-2.5 py-1.5 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition flex items-center gap-1.5 font-bold text-xs active:scale-95 shadow-2xs cursor-pointer"
                           >
-                            <Zap className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="hidden xl:inline">Réassort</span>
+                            <Boxes className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>Réapprovisionner</span>
                           </button>
 
                           <button
                             id={`btn-edit-product-${p.id}`}
+                            type="button"
                             onClick={() => handleOpenEdit(p)}
-                            title="Modifier"
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition"
+                            title="Modifier la fiche produit"
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           {role === 'admin' && (
                             <button
                               id={`btn-delete-product-${p.id}`}
-                              onClick={() => handleDelete(p.id, p.name)}
-                              title="Supprimer"
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                              type="button"
+                              onClick={() => handleRequestDelete(p)}
+                              title="Supprimer ce produit"
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -600,6 +785,40 @@ export const ProductManagement: React.FC = () => {
                   <span>{formError}</span>
                 </div>
               )}
+
+              {/* Alerte de stock direct sur la fiche produit */}
+              {editingProduct &&
+                (editingProduct.unit_stock <= (editingProduct.min_alert_threshold ?? 10)) && (
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50 to-rose-50 border-2 border-amber-300 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-800 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-amber-700" />
+                      </div>
+                      <div>
+                        <div className="font-black text-amber-950">
+                          {editingProduct.unit_stock <= 0
+                            ? 'Alerte Rupture Totale (0 unité en stock)'
+                            : `Alerte Stock Faible (${editingProduct.unit_stock} / ${editingProduct.min_alert_threshold ?? 10} unités)`}
+                        </div>
+                        <div className="text-[11px] text-amber-800 font-medium">
+                          Ce produit est sous le seuil d'alerte configuré.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="btn-fiche-alert-restock"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        setQuickRestockProduct(editingProduct);
+                      }}
+                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-slate-950" />
+                      <span>Réapprovisionner</span>
+                    </button>
+                  </div>
+                )}
 
               {/* 1. Identification Produit */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -821,24 +1040,188 @@ export const ProductManagement: React.FC = () => {
                 )}
               </div>
 
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 -mx-6 -mb-6 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition"
-                >
-                  Annuler
-                </button>
-                <button
-                  id="btn-submit-product-form"
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 disabled:opacity-70"
-                >
-                  {isSubmitting ? 'Enregistrement...' : editingProduct ? 'Mettre à jour' : 'Ajouter le Produit'}
-                </button>
+              {/* 5. Date de Péremption & Fournisseur Associé */}
+              <div className="p-4 bg-indigo-50/50 border border-indigo-200/70 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-indigo-950 font-extrabold text-xs">
+                  <Calendar className="w-4 h-4 text-indigo-600" />
+                  <span>Date de Péremption & Fournisseur Partenaire</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Date de péremption (DLC / DLUO)
+                    </label>
+                    <input
+                      id="input-product-expiration"
+                      type="date"
+                      value={expirationDate}
+                      onChange={(e) => setExpirationDate(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Alerte automatique dès J-7 avant cette date.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Fournisseur habituel (optionnel)
+                    </label>
+                    <select
+                      id="select-product-supplier"
+                      value={supplierId}
+                      onChange={(e) => setSupplierId(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold"
+                    >
+                      <option value="">-- Aucun fournisseur associé --</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.phone})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Facilite les commandes groupées de réapprovisionnement.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 -mx-6 -mb-6 mt-6">
+                <div className="flex items-center gap-2">
+                  {editingProduct && role === 'admin' && (
+                    <button
+                      id="btn-fiche-delete-product"
+                      type="button"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        setProductToDelete(editingProduct);
+                      }}
+                      className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                      title="Supprimer ce produit du stock"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Supprimer ce produit</span>
+                    </button>
+                  )}
+                  {editingProduct && (
+                    <button
+                      id="btn-fiche-restock-product"
+                      type="button"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        setQuickRestockProduct(editingProduct);
+                      }}
+                      className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                      title="Réapprovisionner ce produit"
+                    >
+                      <Boxes className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Réapprovisionner</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    id="btn-submit-product-form"
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 disabled:opacity-70 cursor-pointer"
+                  >
+                    {isSubmitting ? 'Enregistrement...' : editingProduct ? 'Mettre à jour' : 'Ajouter le Produit'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMATION DE SUPPRESSION (AVEC SÉCURITÉ ET HISTORIQUE PRÉSERVÉ) */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="p-5 bg-gradient-to-r from-rose-900 to-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base">Supprimer le produit du stock</h3>
+                  <p className="text-xs text-rose-200 mt-0.5">Cette action est irréversible</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={isDeletingProduct}
+                className="text-white/70 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Produit sélectionné
+                </span>
+                <h4 className="text-base font-black text-slate-900 mt-0.5">{productToDelete.name}</h4>
+                <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-2">
+                  <span>Catégorie : <strong>{productToDelete.category}</strong></span>
+                  <span>•</span>
+                  <span>Stock : <strong>{productToDelete.unit_stock} unités</strong></span>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Voulez-vous vraiment supprimer ce produit ?</strong>
+                  <p className="mt-0.5 text-[11px] text-rose-800">
+                    Cette action retire définitivement le produit du stock et de la liste des produits actifs.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Conservation de l'historique de vente :</strong>
+                  <p className="mt-0.5 text-[11px] text-emerald-800 font-medium">
+                    L'historique des ventes déjà réalisées avec ce produit est intégralement conservé afin de ne pas fausser vos statistiques et vos bilans de caisse.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={isDeletingProduct}
+                className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                id="btn-confirm-delete-product"
+                type="button"
+                disabled={isDeletingProduct}
+                onClick={handleConfirmDelete}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingProduct ? 'Suppression...' : 'Supprimer définitivement'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -45,7 +45,29 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     return res.status(401).json({ error: 'Session expirée ou token invalide. Veuillez vous reconnecter.' });
   }
 
-  const user = db.findUserById(decoded.id);
+  let user = db.findUserById(decoded.id);
+  if (!user && decoded.email) {
+    user = db.findUserByEmail(decoded.email);
+  }
+
+  // If token is cryptographically valid from our server but DB was cleared/restarted, auto-restore
+  if (!user && decoded.id && decoded.email) {
+    const now = new Date().toISOString();
+    db.createUser({
+      id: decoded.id,
+      email: decoded.email,
+      first_name: 'Utilisateur',
+      last_name: decoded.role === 'admin' ? 'Admin' : 'Caissier',
+      role: (decoded.role as 'admin' | 'cashier') || 'admin',
+      boutique_id: decoded.boutique_id || 'btq_default',
+      is_active: true,
+      password_hash: '',
+      created_at: now,
+      last_login: now,
+    });
+    user = db.findUserById(decoded.id);
+  }
+
   if (!user || !user.is_active) {
     return res.status(401).json({ error: 'Compte utilisateur désactivé ou inexistant.' });
   }

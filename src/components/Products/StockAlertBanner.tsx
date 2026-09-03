@@ -300,10 +300,11 @@ export const StockAlertBanner: React.FC<StockAlertBannerProps> = ({
                       <button
                         id={`btn-quick-restock-${prod.id}`}
                         onClick={() => setRestockProduct(prod)}
-                        className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1"
+                        className="px-3 py-1 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                        title={`Réapprovisionner ${prod.name}`}
                       >
-                        <Zap className="w-3 h-3 text-slate-950" />
-                        <span>Réassort (+)</span>
+                        <Zap className="w-3.5 h-3.5 text-slate-950" />
+                        <span>Réapprovisionner</span>
                       </button>
                     </div>
                   </div>

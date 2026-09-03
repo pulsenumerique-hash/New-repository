@@ -1,9 +1,30 @@
+export type QueuedActionType =
+  | 'CREATE_SALE'
+  | 'CANCEL_SALE'
+  | 'CREATE_PRODUCT'
+  | 'UPDATE_PRODUCT'
+  | 'DELETE_PRODUCT'
+  | 'CREATE_CLIENT'
+  | 'DELETE_CLIENT'
+  | 'CREATE_REFUND'
+  | 'CREATE_CASH_MOVEMENT'
+  | 'CREATE_CASH_CLOSING'
+  | 'CREATE_SUPPLIER'
+  | 'UPDATE_SUPPLIER'
+  | 'DELETE_SUPPLIER'
+  | 'CREATE_SUPPLIER_PAYMENT'
+  | 'CREATE_EXPENSE'
+  | 'DELETE_EXPENSE';
+
 export interface QueuedAction {
   id: string;
-  type: 'CREATE_SALE' | 'CREATE_PRODUCT' | 'CREATE_REFUND' | 'CREATE_CASH_MOVEMENT';
-  payload: unknown;
+  type: QueuedActionType;
+  title: string;
+  details?: string;
+  payload: any;
   timestamp: string;
   retryCount: number;
+  lastError?: string;
 }
 
 const CACHE_PREFIX = 'boutiquepro_cache_';
@@ -40,21 +61,38 @@ export const offlineStorage = {
     const queue = this.getQueue();
     const item: QueuedAction = {
       ...action,
-      id: 'q_' + Math.random().toString(36).substring(2, 9),
+      id: 'q_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36),
       timestamp: new Date().toISOString(),
       retryCount: 0,
     };
     queue.push(item);
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: queue.length } }));
+    } catch {}
     return item;
   },
 
   dequeue(id: string) {
     const queue = this.getQueue().filter((item) => item.id !== id);
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: queue.length } }));
+    } catch {}
+  },
+
+  updateItem(id: string, updates: Partial<QueuedAction>) {
+    const queue = this.getQueue().map((item) => (item.id === id ? { ...item, ...updates } : item));
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: queue.length } }));
+    } catch {}
   },
 
   clearQueue() {
     localStorage.removeItem(QUEUE_KEY);
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: 0 } }));
+    } catch {}
   },
 };

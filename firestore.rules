@@ -25,6 +25,12 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated();
     }
 
+    // Cashiers (Comptes Caissiers de la boutique)
+    match /cashiers/{cashierId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     // Products (Gros & Détail)
     match /products/{productId} {
       allow read: if isAuthenticated();
@@ -72,6 +78,30 @@ service cloud.firestore {
     // Multi-device active sessions
     match /active_sessions/{sessionId} {
       allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Suppliers (Fournisseurs & dettes)
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Expenses (Charges d'exploitation)
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Backups
+    match /backups/{backupId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // App versions
+    match /app_versions/{versionId} {
+      allow read: if true;
       allow write: if isAuthenticated();
     }
   }

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User, Boutique } from '../types';
 import { firebaseAuthService } from '../services/firebaseAuth';
 import { realtimeClient } from '../services/realtime';
+import { api, setStoredToken } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -48,7 +49,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(isAuthLoading);
         if (authUser) {
           realtimeClient.connect();
+          // Synchronize server-side session token for API routes
+          api.syncSession({
+            id: authUser.id,
+            email: authUser.email,
+            first_name: authUser.first_name,
+            last_name: authUser.last_name,
+            role: authUser.role,
+            boutique_id: authUser.boutique_id,
+          }).then((res) => {
+            if (res.token) {
+              setStoredToken(res.token);
+            }
+          }).catch((err) => {
+            console.warn('Notice: Backend session sync deferred:', err);
+          });
         } else {
+          setStoredToken(null);
           realtimeClient.disconnect();
         }
       }
@@ -182,6 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    setStoredToken(null);
     firebaseAuthService.logout();
     setUser(null);
     setBoutique(null);

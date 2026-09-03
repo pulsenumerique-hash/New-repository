@@ -11,17 +11,20 @@ import {
   Usb,
   LogOut,
   RefreshCw,
-  ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   Bell,
   BellRing,
   Wifi,
   WifiOff,
-  Download,
   SplitSquareVertical,
   History,
-  Zap,
+  Cloud,
+  CloudUpload,
+  CloudOff,
+  ArrowUpCircle,
+  Database,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -46,13 +49,20 @@ export const Navbar: React.FC<NavbarProps> = ({
     realtimeStatus,
     lastSyncTime,
     pendingSyncCount,
+    pendingQueue,
+    isSyncingQueue,
+    syncNow,
+    clearOfflineQueue,
     refreshData,
     isLoadingData,
     products,
   } = useApp();
 
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [isSyncOpen, setIsSyncOpen] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const alertsDropdownRef = useRef<HTMLDivElement>(null);
+  const syncDropdownRef = useRef<HTMLDivElement>(null);
 
   // Compute products below safety threshold
   const lowStockProducts = useMemo(() => {
@@ -64,34 +74,54 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const lowStockCount = lowStockProducts.length;
 
-  // Close alerts dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (alertsDropdownRef.current && !alertsDropdownRef.current.contains(event.target as Node)) {
         setIsAlertsOpen(false);
       }
+      if (syncDropdownRef.current && !syncDropdownRef.current.contains(event.target as Node)) {
+        setIsSyncOpen(false);
+      }
     };
-    if (isAlertsOpen) {
+    if (isAlertsOpen || isSyncOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isAlertsOpen]);
+  }, [isAlertsOpen, isSyncOpen]);
+
+  const handleManualSync = async () => {
+    setSyncFeedback(null);
+    try {
+      const res = await syncNow();
+      if (res.syncedCount > 0) {
+        setSyncFeedback(`Succès : ${res.syncedCount} opération(s) synchronisée(s) !`);
+      } else if (res.errorCount > 0) {
+        setSyncFeedback(`${res.errorCount} opération(s) n'ont pas pu être envoyées. Vérifiez la connexion.`);
+      } else {
+        setSyncFeedback('Toutes les données sont déjà à jour.');
+      }
+    } catch {
+      setSyncFeedback('Erreur lors de la synchronisation.');
+    }
+    setTimeout(() => setSyncFeedback(null), 4000);
+  };
 
   const getStatusBadge = () => {
     switch (realtimeStatus) {
       case 'connected':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="hidden sm:inline">Temps réel actif</span>
             <span className="sm:hidden">En ligne</span>
           </div>
         );
-      case 'connecting':
+      case 'reconnecting':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
             <RefreshCw className="w-3 h-3 animate-spin" />
             <span>Connexion...</span>
           </div>
@@ -99,9 +129,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       case 'offline':
       default:
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
-            <WifiOff className="w-3 h-3" />
-            <span>Hors-ligne {pendingSyncCount > 0 ? `(${pendingSyncCount} en attente)` : ''}</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30">
+            <WifiOff className="w-3 h-3 text-rose-400" />
+            <span>Hors-ligne</span>
           </div>
         );
     }
@@ -186,7 +216,153 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right quick actions & status */}
           <div className="flex items-center gap-2">
+            {/* Realtime connection status badge */}
             {getStatusBadge()}
+
+            {/* Offline Sync Pending Indicator Badge with Detailed Dropdown */}
+            <div className="relative" ref={syncDropdownRef}>
+              <button
+                id="btn-sync-queue-status"
+                onClick={() => setIsSyncOpen((prev) => !prev)}
+                title={
+                  pendingSyncCount > 0
+                    ? `${pendingSyncCount} opération(s) hors-ligne en attente de synchronisation`
+                    : 'Toutes les données sont synchronisées'
+                }
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 border cursor-pointer ${
+                  pendingSyncCount > 0
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 shadow-sm shadow-amber-500/20 animate-pulse'
+                    : isSyncingQueue
+                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
+                    : 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                {isSyncingQueue ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                ) : pendingSyncCount > 0 ? (
+                  <CloudUpload className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span className="hidden sm:inline">
+                  {isSyncingQueue
+                    ? 'Synchro en cours...'
+                    : pendingSyncCount > 0
+                    ? `${pendingSyncCount} en attente`
+                    : 'Synchro OK'}
+                </span>
+                {pendingSyncCount > 0 && (
+                  <span className="sm:hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
+                    {pendingSyncCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Sync Queue Dropdown Popover */}
+              {isSyncOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl z-50 p-4 text-xs space-y-3">
+                  {/* Dropdown Header */}
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-teal-400" />
+                      <span className="font-extrabold text-sm text-white">Persistance & Synchronisation</span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                        pendingSyncCount > 0
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      }`}
+                    >
+                      {pendingSyncCount > 0 ? `${pendingSyncCount} en attente` : 'À jour'}
+                    </span>
+                  </div>
+
+                  {/* Feedback message */}
+                  {syncFeedback && (
+                    <div className="p-2 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-200 text-center font-bold">
+                      {syncFeedback}
+                    </div>
+                  )}
+
+                  {/* Explanation banner */}
+                  <div className="p-2.5 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-[11px] text-slate-300 flex items-start gap-2">
+                    <Cloud className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-slate-200">Mode Hors-Ligne Renforcé :</span>{' '}
+                      Vos ventes, stocks et clients sont immédiatement sauvegardés dans le stockage local sécurisé. Dès que le réseau est disponible, les actions sont transmises sans perte.
+                    </div>
+                  </div>
+
+                  {/* Queue Items or Empty State */}
+                  {pendingSyncCount === 0 ? (
+                    <div className="py-5 text-center text-slate-400">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-90" />
+                      <p className="font-bold text-slate-200">Aucune synchronisation en attente</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Toutes les opérations locales sont enregistrées sur le serveur cloud.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Opérations locales à envoyer :</span>
+                        <span className="font-mono text-amber-300 font-bold">{pendingSyncCount}</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {pendingQueue.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-2.5 rounded-2xl bg-slate-800 border border-slate-700/70 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-200 truncate">{item.title || item.type}</div>
+                              {item.details && (
+                                <div className="text-[10px] text-slate-400 truncate">{item.details}</div>
+                              )}
+                              <div className="text-[9px] text-slate-500 mt-0.5">
+                                {new Date(item.timestamp).toLocaleTimeString('fr-FR')} • {item.retryCount ? `Essai #${item.retryCount}` : 'Prêt'}
+                              </div>
+                            </div>
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full shrink-0 bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              En attente
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                    <button
+                      id="btn-trigger-manual-sync"
+                      onClick={handleManualSync}
+                      disabled={isSyncingQueue || typeof navigator !== 'undefined' && !navigator.onLine}
+                      className="flex-1 py-2 px-3 rounded-xl font-black text-xs text-slate-950 bg-gradient-to-r from-amber-400 via-teal-400 to-emerald-400 hover:from-amber-300 hover:to-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingQueue ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingQueue ? 'Synchronisation...' : 'Synchroniser maintenant'}</span>
+                    </button>
+
+                    {pendingSyncCount > 0 && (
+                      <button
+                        id="btn-clear-sync-queue"
+                        onClick={() => {
+                          if (window.confirm('Voulez-vous vraiment vider la file d’attente hors-ligne ?')) {
+                            clearOfflineQueue();
+                          }
+                        }}
+                        title="Vider la file d'attente"
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 border border-slate-700/60 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Stock Alerts Bell & Dropdown */}
             <div className="relative" ref={alertsDropdownRef}>
@@ -388,3 +564,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
