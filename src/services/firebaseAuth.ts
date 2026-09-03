@@ -46,6 +46,43 @@ function getDeviceInfo(): { deviceName: string; deviceType: 'desktop' | 'mobile'
   return { deviceName, deviceType, browser };
 }
 
+const AUTH_CACHE_USER_KEY = 'boutiquepro_auth_cached_user_';
+const AUTH_CACHE_BTQ_KEY = 'boutiquepro_auth_cached_btq_';
+
+export function cacheAuthProfile(user: User, boutique: Boutique): void {
+  try {
+    localStorage.setItem(AUTH_CACHE_USER_KEY + user.id, JSON.stringify(user));
+    localStorage.setItem(AUTH_CACHE_BTQ_KEY + boutique.id, JSON.stringify(boutique));
+    localStorage.setItem('boutiquepro_last_auth_uid', user.id);
+  } catch {
+    // Ignore quota/private browsing issues
+  }
+}
+
+export function getCachedAuthProfile(uid: string): { user: User | null; boutique: Boutique | null } {
+  try {
+    const rawUser = localStorage.getItem(AUTH_CACHE_USER_KEY + uid);
+    if (!rawUser) return { user: null, boutique: null };
+    const user = JSON.parse(rawUser) as User;
+    const rawBtq = localStorage.getItem(AUTH_CACHE_BTQ_KEY + user.boutique_id);
+    const boutique = rawBtq ? (JSON.parse(rawBtq) as Boutique) : null;
+    return { user, boutique };
+  } catch {
+    return { user: null, boutique: null };
+  }
+}
+
+export function clearCachedAuthProfile(uid?: string): void {
+  try {
+    if (uid) {
+      localStorage.removeItem(AUTH_CACHE_USER_KEY + uid);
+    }
+    localStorage.removeItem('boutiquepro_last_auth_uid');
+  } catch {
+    // Ignore
+  }
+}
+
 export const firebaseAuthService = {
   /**
    * Inscription par e-mail et mot de passe avec envoi automatique d'e-mail de vérification
@@ -98,15 +135,20 @@ export const firebaseAuthService = {
     };
 
     // Store in Firestore
-    await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
-    await setDoc(doc(db, 'users', fbUser.uid), {
-      ...user,
-      email_verified: fbUser.emailVerified,
-      updated_at: now,
-    });
+    try {
+      await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+      await setDoc(doc(db, 'users', fbUser.uid), {
+        ...user,
+        email_verified: fbUser.emailVerified,
+        updated_at: now,
+      });
+      // Record session
+      await this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, boutiqueId);
+    } catch (writeErr) {
+      console.warn('Notice: Deferred write of registration profile while offline:', writeErr);
+    }
 
-    // Record session
-    await this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, boutiqueId);
+    cacheAuthProfile(user, boutique);
 
     return {
       user,
@@ -122,85 +164,149 @@ export const firebaseAuthService = {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
     const fbUser = userCredential.user;
 
-    // Check user doc in Firestore
-    const userDocRef = doc(db, 'users', fbUser.uid);
-    let userSnap = await getDoc(userDocRef);
+    const cached = getCachedAuthProfile(fbUser.uid);
+    const now = new Date().toISOString();
 
     let user: User;
     let boutique: Boutique;
-    const now = new Date().toISOString();
 
-    if (!userSnap.exists()) {
-      // Auto-reconstruct user doc if missing
-      const nameParts = (fbUser.displayName || 'Gérant Boutique').split(' ');
-      const firstName = nameParts[0] || 'Gérant';
-      const lastName = nameParts.slice(1).join(' ') || 'Admin';
-      const boutiqueId = 'btq_' + Math.random().toString(36).substring(2, 9);
+    try {
+      // Check user doc in Firestore
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
 
-      boutique = {
-        id: boutiqueId,
-        name: 'Ma Boutique Pro',
-        owner_id: fbUser.uid,
-        initial_capital: 0,
-        currency: 'FCFA',
-        created_at: now,
-      };
-      await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+      if (!userSnap.exists()) {
+        // Auto-reconstruct user doc if missing
+        const nameParts = (fbUser.displayName || email.split('@')[0] || 'Gérant').split(' ');
+        const firstName = nameParts[0] || 'Gérant';
+        const lastName = nameParts.slice(1).join(' ') || 'Admin';
+        const boutiqueId = 'btq_' + Math.random().toString(36).substring(2, 9);
 
-      user = {
-        id: fbUser.uid,
-        email: fbUser.email || email.trim(),
-        first_name: firstName,
-        last_name: lastName,
-        role: 'admin',
-        boutique_id: boutiqueId,
-        is_active: true,
-        created_at: now,
-        last_login: now,
-      };
-      await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
-    } else {
-      const data = userSnap.data() as User & { email_verified?: boolean };
-      user = {
-        id: fbUser.uid,
-        email: fbUser.email || data.email,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        role: data.role || 'admin',
-        boutique_id: data.boutique_id,
-        is_active: data.is_active !== undefined ? data.is_active : true,
-        created_at: data.created_at || now,
-        last_login: now,
-        avatar: data.avatar || fbUser.photoURL || undefined,
-      };
-
-      if (!user.is_active) {
-        await signOut(auth);
-        throw new Error('Ce compte utilisateur a été désactivé par l’administrateur.');
-      }
-
-      await updateDoc(userDocRef, {
-        last_login: now,
-        email_verified: fbUser.emailVerified,
-      });
-
-      const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
-      if (btqSnap.exists()) {
-        boutique = btqSnap.data() as Boutique;
-      } else {
         boutique = {
-          id: user.boutique_id,
+          id: boutiqueId,
           name: 'Ma Boutique Pro',
           owner_id: fbUser.uid,
           initial_capital: 0,
           currency: 'FCFA',
           created_at: now,
         };
-        await setDoc(doc(db, 'boutiques', user.boutique_id), boutique);
+        try {
+          await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+        } catch (e) {
+          console.warn('Could not write boutique doc while offline:', e);
+        }
+
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || email.trim(),
+          first_name: firstName,
+          last_name: lastName,
+          role: 'admin',
+          boutique_id: boutiqueId,
+          is_active: true,
+          created_at: now,
+          last_login: now,
+        };
+        try {
+          await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
+        } catch (e) {
+          console.warn('Could not write user doc while offline:', e);
+        }
+      } else {
+        const data = userSnap.data() as User & { email_verified?: boolean };
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || data.email,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          role: data.role || 'admin',
+          boutique_id: data.boutique_id,
+          is_active: data.is_active !== undefined ? data.is_active : true,
+          created_at: data.created_at || now,
+          last_login: now,
+          avatar: data.avatar || fbUser.photoURL || undefined,
+        };
+
+        if (!user.is_active) {
+          await signOut(auth);
+          throw new Error('Ce compte utilisateur a été désactivé par l’administrateur.');
+        }
+
+        try {
+          await updateDoc(userDocRef, {
+            last_login: now,
+            email_verified: fbUser.emailVerified,
+          });
+        } catch (e) {
+          console.warn('Could not update user last_login while offline:', e);
+        }
+
+        try {
+          const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
+          if (btqSnap.exists()) {
+            boutique = btqSnap.data() as Boutique;
+          } else {
+            boutique = {
+              id: user.boutique_id,
+              name: 'Ma Boutique Pro',
+              owner_id: fbUser.uid,
+              initial_capital: 0,
+              currency: 'FCFA',
+              created_at: now,
+            };
+            await setDoc(doc(db, 'boutiques', user.boutique_id), boutique);
+          }
+        } catch (e) {
+          console.warn('Could not fetch boutique doc while offline, fallback to cache:', e);
+          boutique = cached.boutique || {
+            id: user.boutique_id,
+            name: 'Ma Boutique Pro',
+            owner_id: fbUser.uid,
+            initial_capital: 0,
+            currency: 'FCFA',
+            created_at: now,
+          };
+        }
+      }
+    } catch (firestoreErr) {
+      console.warn('Firestore offline during loginWithEmail, utilizing local cache:', firestoreErr);
+      if (cached.user) {
+        user = cached.user;
+        boutique = cached.boutique || {
+          id: user.boutique_id,
+          name: 'Ma Boutique Pro',
+          owner_id: user.id,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: user.created_at,
+        };
+      } else {
+        const nameParts = (fbUser.displayName || email.split('@')[0] || 'Gérant').split(' ');
+        const boutiqueId = 'btq_' + fbUser.uid.substring(0, 8);
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || email.trim(),
+          first_name: nameParts[0] || 'Gérant',
+          last_name: nameParts.slice(1).join(' ') || 'Admin',
+          role: 'admin',
+          boutique_id: boutiqueId,
+          is_active: true,
+          created_at: now,
+          last_login: now,
+        };
+        boutique = {
+          id: boutiqueId,
+          name: 'Ma Boutique Pro',
+          owner_id: fbUser.uid,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: now,
+        };
       }
     }
 
-    await this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, user.boutique_id);
+    cacheAuthProfile(user, boutique);
+    this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, user.boutique_id).catch(() => {});
 
     return {
       user,
@@ -216,89 +322,154 @@ export const firebaseAuthService = {
     const userCredential = await signInWithPopup(auth, googleProvider);
     const fbUser = userCredential.user;
 
-    const userDocRef = doc(db, 'users', fbUser.uid);
-    const userSnap = await getDoc(userDocRef);
+    const cached = getCachedAuthProfile(fbUser.uid);
     const now = new Date().toISOString();
 
     let user: User;
     let boutique: Boutique;
 
-    if (!userSnap.exists()) {
-      const nameParts = (fbUser.displayName || 'Commerçant Google').split(' ');
-      const firstName = nameParts[0] || 'Commerçant';
-      const lastName = nameParts.slice(1).join(' ') || 'Google';
-      const boutiqueId = 'btq_' + Math.random().toString(36).substring(2, 9);
+    try {
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
 
-      boutique = {
-        id: boutiqueId,
-        name: `Boutique de ${firstName}`,
-        owner_id: fbUser.uid,
-        initial_capital: 0,
-        currency: 'FCFA',
-        created_at: now,
-      };
-      await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+      if (!userSnap.exists()) {
+        const nameParts = (fbUser.displayName || 'Commerçant Google').split(' ');
+        const firstName = nameParts[0] || 'Commerçant';
+        const lastName = nameParts.slice(1).join(' ') || 'Google';
+        const boutiqueId = 'btq_' + Math.random().toString(36).substring(2, 9);
 
-      user = {
-        id: fbUser.uid,
-        email: fbUser.email || '',
-        first_name: firstName,
-        last_name: lastName,
-        role: 'admin',
-        boutique_id: boutiqueId,
-        is_active: true,
-        avatar: fbUser.photoURL || undefined,
-        created_at: now,
-        last_login: now,
-      };
-      await setDoc(userDocRef, {
-        ...user,
-        email_verified: true,
-        provider: 'google',
-      });
-    } else {
-      const data = userSnap.data() as User;
-      user = {
-        id: fbUser.uid,
-        email: fbUser.email || data.email,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        role: data.role || 'admin',
-        boutique_id: data.boutique_id,
-        is_active: data.is_active !== undefined ? data.is_active : true,
-        created_at: data.created_at || now,
-        last_login: now,
-        avatar: fbUser.photoURL || data.avatar,
-      };
-
-      if (!user.is_active) {
-        await signOut(auth);
-        throw new Error('Ce compte utilisateur a été désactivé.');
-      }
-
-      await updateDoc(userDocRef, {
-        last_login: now,
-        avatar: fbUser.photoURL || data.avatar || null,
-        email_verified: true,
-      });
-
-      const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
-      if (btqSnap.exists()) {
-        boutique = btqSnap.data() as Boutique;
-      } else {
         boutique = {
+          id: boutiqueId,
+          name: `Boutique de ${firstName}`,
+          owner_id: fbUser.uid,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: now,
+        };
+        try {
+          await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+        } catch (e) {
+          console.warn('Could not write boutique doc while offline:', e);
+        }
+
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          first_name: firstName,
+          last_name: lastName,
+          role: 'admin',
+          boutique_id: boutiqueId,
+          is_active: true,
+          avatar: fbUser.photoURL || undefined,
+          created_at: now,
+          last_login: now,
+        };
+        try {
+          await setDoc(userDocRef, {
+            ...user,
+            email_verified: true,
+            provider: 'google',
+          });
+        } catch (e) {
+          console.warn('Could not write user doc while offline:', e);
+        }
+      } else {
+        const data = userSnap.data() as User;
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || data.email,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          role: data.role || 'admin',
+          boutique_id: data.boutique_id,
+          is_active: data.is_active !== undefined ? data.is_active : true,
+          created_at: data.created_at || now,
+          last_login: now,
+          avatar: fbUser.photoURL || data.avatar,
+        };
+
+        if (!user.is_active) {
+          await signOut(auth);
+          throw new Error('Ce compte utilisateur a été désactivé.');
+        }
+
+        try {
+          await updateDoc(userDocRef, {
+            last_login: now,
+            avatar: fbUser.photoURL || data.avatar || null,
+            email_verified: true,
+          });
+        } catch (e) {
+          console.warn('Could not update user doc while offline:', e);
+        }
+
+        try {
+          const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
+          if (btqSnap.exists()) {
+            boutique = btqSnap.data() as Boutique;
+          } else {
+            boutique = {
+              id: user.boutique_id,
+              name: `Boutique de ${user.first_name}`,
+              owner_id: fbUser.uid,
+              initial_capital: 0,
+              currency: 'FCFA',
+              created_at: now,
+            };
+            await setDoc(doc(db, 'boutiques', user.boutique_id), boutique);
+          }
+        } catch (e) {
+          console.warn('Could not fetch boutique doc while offline, fallback to cache:', e);
+          boutique = cached.boutique || {
+            id: user.boutique_id,
+            name: `Boutique de ${user.first_name}`,
+            owner_id: fbUser.uid,
+            initial_capital: 0,
+            currency: 'FCFA',
+            created_at: now,
+          };
+        }
+      }
+    } catch (firestoreErr) {
+      console.warn('Firestore offline during loginWithGoogle, utilizing local cache:', firestoreErr);
+      if (cached.user) {
+        user = cached.user;
+        boutique = cached.boutique || {
           id: user.boutique_id,
+          name: `Boutique de ${user.first_name}`,
+          owner_id: user.id,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: user.created_at,
+        };
+      } else {
+        const nameParts = (fbUser.displayName || 'Commerçant Google').split(' ');
+        const boutiqueId = 'btq_' + fbUser.uid.substring(0, 8);
+        user = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          first_name: nameParts[0] || 'Commerçant',
+          last_name: nameParts.slice(1).join(' ') || 'Google',
+          role: 'admin',
+          boutique_id: boutiqueId,
+          is_active: true,
+          avatar: fbUser.photoURL || undefined,
+          created_at: now,
+          last_login: now,
+        };
+        boutique = {
+          id: boutiqueId,
           name: `Boutique de ${user.first_name}`,
           owner_id: fbUser.uid,
           initial_capital: 0,
           currency: 'FCFA',
           created_at: now,
         };
-        await setDoc(doc(db, 'boutiques', user.boutique_id), boutique);
       }
     }
 
-    await this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, user.boutique_id);
+    cacheAuthProfile(user, boutique);
+    this.recordSession(fbUser.uid, `${user.first_name} ${user.last_name}`, user.boutique_id).catch(() => {});
 
     return {
       user,
@@ -359,6 +530,7 @@ export const firebaseAuthService = {
       }
       localStorage.removeItem('boutiquepro_firebase_session_id');
     }
+    clearCachedAuthProfile(auth.currentUser?.uid);
     await signOut(auth);
   },
 
@@ -405,6 +577,26 @@ export const firebaseAuthService = {
         return;
       }
 
+      // 1. Instant Cache Fallback: Immediately supply cached user profile so UI loads without waiting
+      const cached = getCachedAuthProfile(fbUser.uid);
+      if (cached.user) {
+        const fallbackBoutique: Boutique = cached.boutique || {
+          id: cached.user.boutique_id,
+          name: 'Ma Boutique Pro',
+          owner_id: cached.user.id,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: cached.user.created_at,
+        };
+        callback({
+          user: cached.user,
+          boutique: fallbackBoutique,
+          needsEmailVerification: !fbUser.emailVerified && !fbUser.providerData.some((p) => p.providerId === 'google.com'),
+          isAuthLoading: false,
+        });
+      }
+
+      // 2. Fetch fresh document from Firestore
       try {
         const userDocRef = doc(db, 'users', fbUser.uid);
         const userSnap = await getDoc(userDocRef);
@@ -424,17 +616,25 @@ export const firebaseAuthService = {
             avatar: fbUser.photoURL || data.avatar,
           };
 
-          const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
-          const boutique = btqSnap.exists()
-            ? (btqSnap.data() as Boutique)
-            : {
-                id: user.boutique_id,
-                name: 'Ma Boutique Pro',
-                owner_id: user.id,
-                initial_capital: 0,
-                currency: 'FCFA',
-                created_at: new Date().toISOString(),
-              };
+          let boutique: Boutique = cached.boutique || {
+            id: user.boutique_id,
+            name: 'Ma Boutique Pro',
+            owner_id: user.id,
+            initial_capital: 0,
+            currency: 'FCFA',
+            created_at: new Date().toISOString(),
+          };
+
+          try {
+            const btqSnap = await getDoc(doc(db, 'boutiques', user.boutique_id));
+            if (btqSnap.exists()) {
+              boutique = btqSnap.data() as Boutique;
+            }
+          } catch (btqErr) {
+            console.warn('Notice: Offline fetching boutique doc:', btqErr);
+          }
+
+          cacheAuthProfile(user, boutique);
 
           callback({
             user,
@@ -470,8 +670,14 @@ export const firebaseAuthService = {
             avatar: fbUser.photoURL || undefined,
           };
 
-          await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
-          await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
+          try {
+            await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
+            await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
+          } catch (writeErr) {
+            console.warn('Notice: Deferred write while offline:', writeErr);
+          }
+
+          cacheAuthProfile(user, boutique);
 
           callback({
             user,
@@ -481,8 +687,61 @@ export const firebaseAuthService = {
           });
         }
       } catch (err) {
-        console.error('Error fetching auth user profile from Firestore:', err);
-        callback({ user: null, boutique: null, needsEmailVerification: false, isAuthLoading: false });
+        console.warn('Notice: Operating in offline mode for auth profile:', err);
+        // Do NOT log the user out if Firebase Auth recognizes them!
+        if (cached.user) {
+          const fallbackBoutique: Boutique = cached.boutique || {
+            id: cached.user.boutique_id,
+            name: 'Ma Boutique Pro',
+            owner_id: cached.user.id,
+            initial_capital: 0,
+            currency: 'FCFA',
+            created_at: cached.user.created_at,
+          };
+          callback({
+            user: cached.user,
+            boutique: fallbackBoutique,
+            needsEmailVerification: !fbUser.emailVerified && !fbUser.providerData.some((p) => p.providerId === 'google.com'),
+            isAuthLoading: false,
+          });
+          return;
+        }
+
+        // Generate safe offline profile from Firebase Auth user data
+        const nameParts = (fbUser.displayName || 'Gérant').split(' ');
+        const fallbackBtqId = 'btq_' + fbUser.uid.substring(0, 8);
+        const now = new Date().toISOString();
+
+        const fallbackUser: User = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          first_name: nameParts[0] || 'Gérant',
+          last_name: nameParts.slice(1).join(' ') || 'Admin',
+          role: 'admin',
+          boutique_id: fallbackBtqId,
+          is_active: true,
+          created_at: now,
+          last_login: now,
+          avatar: fbUser.photoURL || undefined,
+        };
+
+        const fallbackBtq: Boutique = {
+          id: fallbackBtqId,
+          name: `Boutique de ${nameParts[0]}`,
+          owner_id: fbUser.uid,
+          initial_capital: 0,
+          currency: 'FCFA',
+          created_at: now,
+        };
+
+        cacheAuthProfile(fallbackUser, fallbackBtq);
+
+        callback({
+          user: fallbackUser,
+          boutique: fallbackBtq,
+          needsEmailVerification: !fbUser.emailVerified && !fbUser.providerData.some((p) => p.providerId === 'google.com'),
+          isAuthLoading: false,
+        });
       }
     });
   },

@@ -59,8 +59,9 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Firestore Database with Memory Local Cache
+// Firestore Database with Memory Local Cache & Long Polling
 // memoryLocalCache completely avoids QuotaExceededError in sandboxed iframe environments
+// experimentalForceLongPolling prevents 10s WebChannel timeout in sandboxed iframes & proxies
 let dbInstance: Firestore;
 try {
   const dbId =
@@ -72,6 +73,7 @@ try {
     app,
     {
       localCache: memoryLocalCache(),
+      experimentalForceLongPolling: true,
     },
     dbId
   );
