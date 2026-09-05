@@ -81,6 +81,22 @@ export const offlineStorage = {
     } catch {}
   },
 
+  removeQueuedActionsForEntity(entityId: string) {
+    if (!entityId) return;
+    const queue = this.getQueue().filter((item) => {
+      const p = item.payload;
+      if (!p) return true;
+      if (p.id === entityId || (p.product && p.product.id === entityId) || (p.client && p.client.id === entityId)) {
+        return false;
+      }
+      return true;
+    });
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: queue.length } }));
+    } catch {}
+  },
+
   updateItem(id: string, updates: Partial<QueuedAction>) {
     const queue = this.getQueue().map((item) => (item.id === id ? { ...item, ...updates } : item));
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
@@ -93,6 +109,30 @@ export const offlineStorage = {
     localStorage.removeItem(QUEUE_KEY);
     try {
       window.dispatchEvent(new CustomEvent('boutiquepro_queue_updated', { detail: { count: 0 } }));
+    } catch {}
+  },
+
+  clearBoutiqueData(boutiqueId: string) {
+    if (!boutiqueId) return;
+    try {
+      const keys = Object.keys(localStorage);
+      for (const key of keys) {
+        if (key.startsWith(CACHE_PREFIX) && key.includes(boutiqueId)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {}
+  },
+
+  clearAllCache() {
+    try {
+      const keys = Object.keys(localStorage);
+      for (const key of keys) {
+        if (key.startsWith(CACHE_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      }
+      this.clearQueue();
     } catch {}
   },
 };

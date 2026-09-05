@@ -70,8 +70,7 @@ var DatabaseService = class {
       id: boutiqueId,
       name: "Superette \xC9toile du Sahel",
       owner_id: adminId,
-      initial_capital: 25e4,
-      // 250 000 FCFA
+      initial_capital: 0,
       currency: "FCFA",
       created_at: now
     };
@@ -287,6 +286,7 @@ var DatabaseService = class {
         payment_type: "cash",
         cashier_id: cashierId,
         cashier_name: "Moussa Kon\xE9",
+        status: "completed",
         date: now,
         created_at: now
       },
@@ -310,34 +310,12 @@ var DatabaseService = class {
         client_name: "Mme Fatou Traor\xE9",
         cashier_id: cashierId,
         cashier_name: "Moussa Kon\xE9",
+        status: "completed",
         date: now,
         created_at: now
       }
     ];
-    const cash_movements = [
-      {
-        id: "mov_001",
-        boutique_id: boutiqueId,
-        type: "injection",
-        amount: 5e4,
-        reason: "Renforcement fond de caisse pour d\xE9but de semaine",
-        author: "Amadou Diallo (G\xE9rant)",
-        cashier_id: adminId,
-        date: now,
-        created_at: now
-      },
-      {
-        id: "mov_002",
-        boutique_id: boutiqueId,
-        type: "withdrawal",
-        amount: 5e3,
-        reason: "Paiement facture d\u2019\xE9lectricit\xE9 de la boutique (Woyofal)",
-        author: "Amadou Diallo",
-        cashier_id: adminId,
-        date: now,
-        created_at: now
-      }
-    ];
+    const cash_movements = [];
     const audit_logs = [
       {
         id: "log_001",
@@ -618,18 +596,38 @@ var DatabaseService = class {
     }
     const total_credits_en_cours = clients.reduce((acc, c) => acc + c.credit_balance, 0);
     const nb_clients_debiteurs = clients.filter((c) => c.credit_balance > 0).length;
+    const completedSales = sales.filter((s) => s.status !== "cancelled");
+    const ventes_cash_total = completedSales.filter((s) => s.payment_type === "cash").reduce((acc, s) => acc + s.total_amount, 0);
+    const ventes_mobile_money_total = completedSales.filter((s) => s.payment_type === "mobile_money").reduce((acc, s) => acc + s.total_amount, 0);
+    const ventes_credit_total = completedSales.filter((s) => s.payment_type === "credit").reduce((acc, s) => acc + s.total_amount, 0);
+    let benefice_brut_estime = 0;
+    for (const s of completedSales) {
+      for (const item of s.items) {
+        benefice_brut_estime += (item.unit_price - (item.unit_purchase_price || 0)) * item.quantity;
+      }
+    }
     const solde_caisse = initialCapital + totalInjections + totalCashSales + totalRefundsCash - totalWithdrawals;
     return {
       solde_caisse,
       ventes_jour,
       ventes_semaine,
       ventes_mois,
+      ventes_cash_total,
+      ventes_mobile_money_total,
+      ventes_credit_total,
       valeur_stock_achat,
       valeur_stock_vente,
       total_credits_en_cours,
       nb_clients_debiteurs,
+      nb_credits_en_retard: 0,
+      total_dettes_fournisseurs: 0,
+      total_depenses_mois: 0,
+      benefice_brut_estime,
+      benefice_net_reel: benefice_brut_estime,
       nb_produits: products.length,
       nb_produits_alerte,
+      nb_produits_perimes: 0,
+      nb_produits_bientot_perimes: 0,
       retraits_total: totalWithdrawals,
       injections_total: totalInjections
     };
@@ -684,7 +682,26 @@ function authMiddleware(req, res, next) {
   if (!decoded) {
     return res.status(401).json({ error: "Session expir\xE9e ou token invalide. Veuillez vous reconnecter." });
   }
-  const user = db.findUserById(decoded.id);
+  let user = db.findUserById(decoded.id);
+  if (!user && decoded.email) {
+    user = db.findUserByEmail(decoded.email);
+  }
+  if (!user && decoded.id && decoded.email) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    db.createUser({
+      id: decoded.id,
+      email: decoded.email,
+      first_name: "Utilisateur",
+      last_name: decoded.role === "admin" ? "Admin" : "Caissier",
+      role: decoded.role || "admin",
+      boutique_id: decoded.boutique_id || "btq_default",
+      is_active: true,
+      password_hash: "",
+      created_at: now,
+      last_login: now
+    });
+    user = db.findUserById(decoded.id);
+  }
   if (!user || !user.is_active) {
     return res.status(401).json({ error: "Compte utilisateur d\xE9sactiv\xE9 ou inexistant." });
   }
@@ -732,7 +749,19 @@ var RealtimeHub = class {
     this.pingInterval = null;
   }
   init(server2) {
-    this.wss = new import_ws.WebSocketServer({ server: server2, path: "/api/ws" });
+    this.wss = new import_ws.WebSocketServer({ noServer: true });
+    server2.on("upgrade", (req, socket, head) => {
+      try {
+        const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+        if (url.pathname === "/api/ws") {
+          this.wss.handleUpgrade(req, socket, head, (ws) => {
+            this.wss.emit("connection", ws, req);
+          });
+        }
+      } catch (err) {
+        console.error("RealtimeHub upgrade routing error:", err);
+      }
+    });
     this.wss.on("connection", (ws, req) => {
       let clientInfo = null;
       try {
@@ -906,8 +935,7 @@ app.post("/api/auth/register", async (req, res) => {
       id: boutiqueId,
       name: boutique_name.trim(),
       owner_id: userId,
-      initial_capital: 1e5,
-      // 100 000 FCFA capital de départ par défaut
+      initial_capital: 0,
       currency: "FCFA",
       created_at: now
     };
@@ -1046,7 +1074,7 @@ app.post("/api/auth/google", async (req, res) => {
         id: boutiqueId,
         name: `Boutique de ${firstName}`,
         owner_id: userId,
-        initial_capital: 15e4,
+        initial_capital: 0,
         currency: "FCFA",
         created_at: now
       };
@@ -1101,6 +1129,83 @@ app.post("/api/auth/google", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
     res.status(500).json({ error: "Erreur authentification Google : " + message });
+  }
+});
+app.post("/api/auth/sync-session", async (req, res) => {
+  try {
+    const { id, email, first_name, last_name, role, boutique_id } = req.body;
+    if (!id || !email) {
+      return res.status(400).json({ error: "Identifiant et e-mail requis pour synchroniser la session." });
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    let userWithHash = db.findUserById(id) || db.findUserByEmail(email);
+    if (!userWithHash) {
+      const btqId = boutique_id || "btq_" + Math.random().toString(36).substring(2, 9);
+      let btq = db.getBoutique(btqId);
+      if (!btq) {
+        btq = {
+          id: btqId,
+          name: `Boutique de ${first_name || "Commer\xE7ant"}`,
+          owner_id: id,
+          initial_capital: 0,
+          currency: "FCFA",
+          created_at: now
+        };
+        db.createBoutique(btq);
+      }
+      const salt = import_bcryptjs2.default.genSaltSync(10);
+      const autoPassword = import_bcryptjs2.default.hashSync("Sync_" + Math.random().toString(36), salt);
+      const createdUser = db.createUser({
+        id,
+        email: email.trim().toLowerCase(),
+        first_name: first_name || "Utilisateur",
+        last_name: last_name || "",
+        role: role || "admin",
+        boutique_id: btqId,
+        is_active: true,
+        password_hash: autoPassword,
+        created_at: now,
+        last_login: now
+      });
+      userWithHash = db.findUserById(createdUser.id);
+    } else {
+      db.updateUser(userWithHash.id, {
+        last_login: now,
+        is_active: true,
+        ...first_name ? { first_name } : {},
+        ...last_name ? { last_name } : {},
+        ...boutique_id ? { boutique_id } : {}
+      });
+      userWithHash = db.findUserById(userWithHash.id);
+    }
+    const { password_hash, ...safeUser } = userWithHash;
+    const sessionId = "ses_" + Math.random().toString(36).substring(2, 9);
+    const deviceInfo = extractDeviceInfo(req);
+    const session = {
+      id: sessionId,
+      user_id: safeUser.id,
+      user_name: `${safeUser.first_name} ${safeUser.last_name}`.trim(),
+      boutique_id: safeUser.boutique_id,
+      device_name: deviceInfo.deviceName,
+      device_type: deviceInfo.deviceType,
+      browser: deviceInfo.browser,
+      ip: req.ip || "127.0.0.1",
+      last_active: now,
+      is_current: true
+    };
+    db.createSession(session);
+    const token = generateToken(safeUser, sessionId);
+    const boutique = db.getBoutique(safeUser.boutique_id);
+    res.json({
+      message: "Session synchronis\xE9e avec succ\xE8s.",
+      token,
+      user: safeUser,
+      boutique,
+      session_id: sessionId
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
+    res.status(500).json({ error: "Erreur synchronisation session : " + message });
   }
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
@@ -1429,6 +1534,7 @@ app.post("/api/sales", authMiddleware, (req, res) => {
       client_name: payment_type === "credit" ? finalClientName : null,
       cashier_id: req.user.id,
       cashier_name: `${req.user.first_name} ${req.user.last_name}`,
+      status: "completed",
       date: now,
       created_at: now
     };
@@ -1771,8 +1877,12 @@ app.get("/api/sync/delta", authMiddleware, (req, res) => {
 });
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const isHmrDisabled = process.env.DISABLE_HMR === "true";
     const vite = await (0, import_vite.createServer)({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : { server, overlay: false }
+      },
       appType: "spa"
     });
     app.use(vite.middlewares);

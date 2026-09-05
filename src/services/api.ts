@@ -226,4 +226,10 @@ export const api = {
       stats: DashboardStats;
       server_timestamp: string;
     }>(`/api/sync/delta${since ? `?since=${encodeURIComponent(since)}` : ''}`),
+
+  // Reset
+  resetBoutiqueBusinessData: () =>
+    request<{ message: string }>('/api/boutique/reset', {
+      method: 'POST',
+    }),
 };

@@ -24,6 +24,7 @@ import {
   Barcode,
   Command,
   Zap,
+  Send,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -77,7 +78,7 @@ function normalizeSearchText(str: string): string {
 }
 
 export const POSScreen: React.FC = () => {
-  const { products, clients, createSale, createClient } = useApp();
+  const { products, clients, boutique, createSale, createClient } = useApp();
   const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +226,7 @@ export const POSScreen: React.FC = () => {
 
     let finalClientId: string | null = null;
     let finalClientName: string | null = null;
+    let finalClientPhone: string | null = null;
 
     if (paymentType === 'credit') {
       if (isCreatingNewClient) {
@@ -232,7 +234,29 @@ export const POSScreen: React.FC = () => {
           setErrorMessage('Le nom du client est obligatoire pour une vente à crédit.');
           return;
         }
-        finalClientName = newClientName.trim();
+        if (!newClientPhone.trim()) {
+          setErrorMessage('Le numéro WhatsApp du client est obligatoire pour une vente à crédit (ex. +237 6XXXXXXXX ou +221 7XXXXXXXX).');
+          return;
+        }
+        const cleanDigits = newClientPhone.replace(/[^0-9]/g, '');
+        if (cleanDigits.length < 8) {
+          setErrorMessage('Veuillez saisir un numéro WhatsApp valide avec indicatif pays (au moins 8 chiffres).');
+          return;
+        }
+
+        // Si le client existe déjà avec ce même numéro WhatsApp -> rattacher sans doublon
+        const existingClientByPhone = clients.find(
+          (c) => c.phone && c.phone.replace(/[^0-9]/g, '') === cleanDigits
+        );
+
+        if (existingClientByPhone) {
+          finalClientId = existingClientByPhone.id;
+          finalClientName = existingClientByPhone.name;
+          finalClientPhone = existingClientByPhone.phone || newClientPhone.trim();
+        } else {
+          finalClientName = newClientName.trim();
+          finalClientPhone = newClientPhone.trim();
+        }
       } else {
         if (!selectedClientId) {
           setErrorMessage('Veuillez sélectionner le client concerné par ce crédit.');
@@ -240,6 +264,16 @@ export const POSScreen: React.FC = () => {
         }
         finalClientId = selectedClientId;
         finalClientName = selectedClient?.name || null;
+        finalClientPhone = selectedClient?.phone || (newClientPhone.trim() ? newClientPhone.trim() : null);
+        if (!finalClientPhone) {
+          setErrorMessage('Ce client n’a pas de numéro WhatsApp enregistré. Veuillez renseigner son numéro WhatsApp ci-dessous.');
+          return;
+        }
+        const cleanDigits = finalClientPhone.replace(/[^0-9]/g, '');
+        if (cleanDigits.length < 8) {
+          setErrorMessage('Numéro WhatsApp invalide. Veuillez renseigner un numéro valide avec indicatif.');
+          return;
+        }
       }
     }
 
@@ -258,7 +292,23 @@ export const POSScreen: React.FC = () => {
         payment_method_detail: paymentType === 'mobile_money' ? mobileMoneyProvider : (paymentType as any),
         client_id: finalClientId,
         client_name: finalClientName,
+        client_phone: finalClientPhone,
       });
+
+      // Si vente à crédit, ouvrir automatiquement WhatsApp avec le message de confirmation pré-rempli
+      if (paymentType === 'credit' && finalClientPhone) {
+        const cleanDigits = finalClientPhone.replace(/[^0-9]/g, '');
+        const itemsSummary = saleItems
+          .map((i) => `• ${i.quantity}x ${i.product_name} (${formatCurrency(i.quantity * i.unit_price)})`)
+          .join('\n');
+        const shopTitle = boutique?.name || 'BoutiquePro';
+        const msg = `Bonjour ${finalClientName},\nConfirmation de votre achat à crédit du ${new Date().toLocaleDateString('fr-FR')} chez ${shopTitle} :\n${itemsSummary}\nMontant total dû : ${formatCurrency(cartTotal)}.\nMerci de votre confiance !`;
+        try {
+          window.open(`https://wa.me/${cleanDigits}?text=${encodeURIComponent(msg)}`, '_blank');
+        } catch {
+          // Ignore popup block
+        }
+      }
 
       setCompletedSale(sale);
       setCart([]);
@@ -860,7 +910,7 @@ export const POSScreen: React.FC = () => {
                   </div>
 
                   {!isCreatingNewClient ? (
-                    <div>
+                    <div className="space-y-2.5">
                       <select
                         id="select-credit-client"
                         value={selectedClientId}
@@ -870,15 +920,35 @@ export const POSScreen: React.FC = () => {
                         <option value="">-- Sélectionner un client débiteur --</option>
                         {clients.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} {c.phone ? `(${c.phone})` : ''} — Dette actuelle : {formatCurrency(c.credit_balance)}
+                            {c.name} {c.phone ? `(${c.phone})` : '⚠️ Pas de tél'} — Dette : {formatCurrency(c.credit_balance)}
                           </option>
                         ))}
                       </select>
 
                       {selectedClient && (
-                        <div className="mt-2 text-xs text-rose-800 bg-white p-3 rounded-xl border border-rose-200 space-y-1">
-                          <div>Solde débiteur actuel : <strong>{formatCurrency(selectedClient.credit_balance)}</strong></div>
-                          <div>Nouvelle dette après vente : <strong>{formatCurrency(selectedClient.credit_balance + cartTotal)}</strong></div>
+                        <div className="space-y-2">
+                          <div className="text-xs text-rose-800 bg-white p-3 rounded-xl border border-rose-200 space-y-1">
+                            <div>Client : <strong>{selectedClient.name}</strong></div>
+                            <div>Numéro WhatsApp : <strong>{selectedClient.phone || 'Non renseigné'}</strong></div>
+                            <div>Solde débiteur actuel : <strong>{formatCurrency(selectedClient.credit_balance)}</strong></div>
+                            <div>Nouvelle dette après vente : <strong>{formatCurrency(selectedClient.credit_balance + cartTotal)}</strong></div>
+                          </div>
+
+                          {!selectedClient.phone && (
+                            <div>
+                              <label className="block text-[11px] font-bold text-rose-900 mb-1">
+                                Numéro WhatsApp obligatoire pour ce client (avec indicatif, ex. +237...) *
+                              </label>
+                              <input
+                                type="tel"
+                                required
+                                value={newClientPhone}
+                                onChange={(e) => setNewClientPhone(e.target.value)}
+                                placeholder="ex: +237 6XXXXXXXX ou +221 7XXXXXXXX"
+                                className="w-full p-2.5 text-xs border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 bg-white"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -899,15 +969,19 @@ export const POSScreen: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Numéro de téléphone (optionnel)
+                          Numéro WhatsApp du client (avec indicatif pays, ex. +237 / +221) *
                         </label>
                         <input
                           type="tel"
+                          required
                           value={newClientPhone}
                           onChange={(e) => setNewClientPhone(e.target.value)}
-                          placeholder="ex: +221 77 123 45 67"
+                          placeholder="ex: +237 6XXXXXXXX ou +221 7XXXXXXXX"
                           className="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500"
                         />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Si ce numéro existe déjà, le crédit sera rattaché à la fiche existante sans doublon.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1000,6 +1074,39 @@ export const POSScreen: React.FC = () => {
                 Merci de votre visite et à bientôt !
               </div>
             </div>
+
+            {completedSale.payment_type === 'credit' && (() => {
+              const matchedClient = clients.find(c => c.id === completedSale.client_id || c.name === completedSale.client_name);
+              const clientPhone = matchedClient?.phone;
+              const cleanDigits = clientPhone ? clientPhone.replace(/[^0-9]/g, '') : '';
+              const itemsList = completedSale.items.map(it => `• ${it.quantity}x ${it.product_name} (${formatCurrency(it.total_price)})`).join('\n');
+              const msg = `Bonjour ${completedSale.client_name},\nConfirmation de votre achat à crédit du ${new Date(completedSale.date).toLocaleDateString('fr-FR')} chez ${boutique?.name || 'BoutiquePro'} :\n${itemsList}\nTotal restant dû : ${formatCurrency(completedSale.total_amount)}.\nMerci de votre confiance !`;
+              const waUrl = cleanDigits
+                ? `https://wa.me/${cleanDigits}?text=${encodeURIComponent(msg)}`
+                : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+              return (
+                <div className="p-4 bg-emerald-50 border-t border-emerald-200">
+                  <div className="flex items-center justify-between text-xs text-emerald-900 font-bold mb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-emerald-600" />
+                      Confirmation WhatsApp
+                    </span>
+                    {cleanDigits && <span className="text-emerald-700 font-mono">+{cleanDigits}</span>}
+                  </div>
+                  <a
+                    id="btn-send-whatsapp-credit-confirm"
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Envoyer la confirmation WhatsApp</span>
+                  </a>
+                </div>
+              );
+            })()}
 
             <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between gap-2">
               <button

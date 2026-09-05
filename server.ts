@@ -1177,11 +1177,34 @@ app.get('/api/sync/delta', authMiddleware, (req: AuthRequest, res) => {
   res.json(delta);
 });
 
+// --- RESET DES DONNÉES MÉTIER (ADMIN UNIQUEMENT) ---
+app.post('/api/boutique/reset', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  try {
+    const boutiqueId = req.user!.boutique_id;
+    db.resetBoutiqueBusinessData(boutiqueId);
+    realtimeHub.broadcastToBoutique(boutiqueId, {
+      action: 'DATA_DELETED',
+      entity: 'stats',
+      id: boutiqueId,
+      timestamp: new Date().toISOString(),
+      user_id: req.user!.id,
+    });
+    res.json({ message: 'Toutes les données métier ont été réinitialisées avec succès.' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erreur lors de la réinitialisation';
+    res.status(500).json({ error: message });
+  }
+});
+
 // --- CLIENT-SIDE APPLICATION OR VITE MIDDLEWARE ---
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : { server, overlay: false },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

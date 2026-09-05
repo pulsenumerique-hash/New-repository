@@ -78,6 +78,14 @@ export interface Sale {
   created_at: string;
 }
 
+export interface ClientReminderRecord {
+  date: string;
+  amount: number;
+  sale_id?: string;
+  channel: 'whatsapp' | 'sms';
+  sent_by: string;
+}
+
 export interface Client {
   id: string;
   boutique_id: string;
@@ -88,6 +96,7 @@ export interface Client {
   total_repaid: number;
   due_date?: string; // Date limite de remboursement
   last_reminder_date?: string; // Horodatage du dernier rappel
+  reminder_history?: ClientReminderRecord[];
   notes?: string;
   created_at: string;
   updated_at: string;

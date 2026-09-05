@@ -19,7 +19,63 @@ class RealtimeHub {
   private pingInterval: NodeJS.Timeout | null = null;
 
   init(server: HttpServer) {
-    this.wss = new WebSocketServer({ server, path: '/api/ws' });
+    this.wss = new WebSocketServer({ noServer: true });
+    const viteHmrWss = new WebSocketServer({
+      noServer: true,
+      handleProtocols: (protocols) => {
+        if (protocols.has('vite-hmr')) return 'vite-hmr';
+        return false;
+      },
+    });
+
+    server.on('upgrade', (req, socket, head) => {
+      try {
+        const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+        if (url.pathname === '/api/ws') {
+          this.wss!.handleUpgrade(req, socket, head, (ws) => {
+            this.wss!.emit('connection', ws, req);
+          });
+        } else if (
+          url.pathname === '/' ||
+          url.pathname === '' ||
+          req.headers['sec-websocket-protocol'] === 'vite-hmr'
+        ) {
+          // Gracefully accept Vite HMR dev connections so client never errors on disabled HMR
+          viteHmrWss.handleUpgrade(req, socket, head, (ws) => {
+            ws.on('error', () => {});
+
+            // Send Vite HMR connected message immediately
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'connected' }));
+            } else {
+              ws.on('open', () => {
+                ws.send(JSON.stringify({ type: 'connected' }));
+              });
+            }
+
+            ws.on('message', (data) => {
+              try {
+                const msg = JSON.parse(data.toString());
+                if (msg.type === 'ping') {
+                  ws.send(JSON.stringify({ type: 'pong' }));
+                }
+              } catch {
+                // ignore non-json messages
+              }
+            });
+
+            const timer = setInterval(() => {
+              if (ws.readyState === ws.OPEN) {
+                ws.ping();
+              }
+            }, 25000);
+            ws.on('close', () => clearInterval(timer));
+          });
+        }
+      } catch (err) {
+        console.error('RealtimeHub upgrade routing error:', err);
+      }
+    });
 
     this.wss.on('connection', (ws: WebSocket, req) => {
       let clientInfo: AuthenticatedClient | null = null;

@@ -1,0 +1,309 @@
+{
+  "boutiques": [
+    {
+      "id": "btq_demo_001",
+      "name": "Superette Étoile du Sahel",
+      "owner_id": "usr_admin_001",
+      "initial_capital": 0,
+      "currency": "FCFA",
+      "created_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "btq_lp47gi0",
+      "name": "Boutique de pulse",
+      "owner_id": "OF0QRBSJWugygikc4t7oIOXIKRn1",
+      "initial_capital": 0,
+      "currency": "FCFA",
+      "created_at": "2026-09-05T09:24:45.277Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "usr_admin_001",
+      "email": "admin@boutiquepro.com",
+      "first_name": "Amadou",
+      "last_name": "Diallo",
+      "role": "admin",
+      "boutique_id": "btq_demo_001",
+      "is_active": true,
+      "password_hash": "$2b$10$5.tHXotd8CO.Y2VMsZaC6eE9NLTaMiarMuQlgBltL36YLAZAty3UG",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "last_login": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "usr_cashier_001",
+      "email": "moussa@boutiquepro.com",
+      "first_name": "Moussa",
+      "last_name": "Koné",
+      "role": "cashier",
+      "boutique_id": "btq_demo_001",
+      "is_active": true,
+      "password_hash": "$2b$10$5.tHXotd8CO.Y2VMsZaC6ebh.7YHNSNYw.Y5Ov6iS8tBtaSOYjbyK",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "last_login": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "OF0QRBSJWugygikc4t7oIOXIKRn1",
+      "email": "pulsenumerique@gmail.com",
+      "first_name": "pulse",
+      "last_name": "numerique",
+      "role": "admin",
+      "boutique_id": "btq_lp47gi0",
+      "is_active": true,
+      "password_hash": "$2b$10$7yGUO8sIR2wr053/fsp.4OxjHLZ6C7O9KF.nT71hHQubNV8q9.00q",
+      "created_at": "2026-09-05T09:24:45.277Z",
+      "last_login": "2026-09-05T09:24:46.278Z"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_001",
+      "boutique_id": "btq_demo_001",
+      "name": "Bonbons Menthe Fraîche",
+      "category": "Confiserie",
+      "package_type": "Paquet",
+      "package_purchase_price": 1000,
+      "units_per_package": 20,
+      "unit_purchase_price": 50,
+      "unit_sale_price": 75,
+      "package_stock": 5,
+      "unit_stock": 100,
+      "min_alert_threshold": 20,
+      "barcode": "600123456789",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_002",
+      "boutique_id": "btq_demo_001",
+      "name": "Riz Parfumé Jasmin 50kg",
+      "category": "Céréales & Riz",
+      "package_type": "Sac 50kg",
+      "package_purchase_price": 22000,
+      "units_per_package": 50,
+      "unit_purchase_price": 440,
+      "unit_sale_price": 600,
+      "package_stock": 4,
+      "unit_stock": 200,
+      "min_alert_threshold": 25,
+      "barcode": "600987654321",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_003",
+      "boutique_id": "btq_demo_001",
+      "name": "Huile Végétale Dinor 5L (bouteille 1L)",
+      "category": "Huiles & Condiments",
+      "package_type": "Carton 4 Bidons",
+      "package_purchase_price": 24000,
+      "units_per_package": 4,
+      "unit_purchase_price": 6000,
+      "unit_sale_price": 7200,
+      "package_stock": 3,
+      "unit_stock": 12,
+      "min_alert_threshold": 4,
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_004",
+      "boutique_id": "btq_demo_001",
+      "name": "Lait Concentré Sucré Bonnet Rouge",
+      "category": "Produits Laitiers",
+      "package_type": "Carton 48 Boîtes",
+      "package_purchase_price": 24000,
+      "units_per_package": 48,
+      "unit_purchase_price": 500,
+      "unit_sale_price": 650,
+      "package_stock": 2,
+      "unit_stock": 96,
+      "min_alert_threshold": 15,
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_005",
+      "boutique_id": "btq_demo_001",
+      "name": "Spaghetti Maman 500g",
+      "category": "Pâtes Alimentaires",
+      "package_type": "Carton 20 sachets",
+      "package_purchase_price": 7000,
+      "units_per_package": 20,
+      "unit_purchase_price": 350,
+      "unit_sale_price": 450,
+      "package_stock": 4,
+      "unit_stock": 80,
+      "min_alert_threshold": 10,
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_006",
+      "boutique_id": "btq_demo_001",
+      "name": "Sucre Blanc Saint Louis (Morceaux)",
+      "category": "Épicerie",
+      "package_type": "Carton 25 paquets 1kg",
+      "package_purchase_price": 18750,
+      "units_per_package": 25,
+      "unit_purchase_price": 750,
+      "unit_sale_price": 900,
+      "package_stock": 3,
+      "unit_stock": 75,
+      "min_alert_threshold": 10,
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "prod_007",
+      "boutique_id": "btq_demo_001",
+      "name": "Savon de Marseille BF",
+      "category": "Entretien & Hygiène",
+      "package_type": "Carton 36 barres",
+      "package_purchase_price": 9000,
+      "units_per_package": 36,
+      "unit_purchase_price": 250,
+      "unit_sale_price": 350,
+      "package_stock": 3,
+      "unit_stock": 108,
+      "min_alert_threshold": 12,
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    }
+  ],
+  "sales": [
+    {
+      "id": "sale_001",
+      "boutique_id": "btq_demo_001",
+      "items": [
+        {
+          "product_id": "prod_001",
+          "product_name": "Bonbons Menthe Fraîche",
+          "quantity": 5,
+          "unit_price": 75,
+          "total_price": 375,
+          "unit_purchase_price": 50
+        },
+        {
+          "product_id": "prod_004",
+          "product_name": "Lait Concentré Sucré Bonnet Rouge",
+          "quantity": 2,
+          "unit_price": 650,
+          "total_price": 1300,
+          "unit_purchase_price": 500
+        }
+      ],
+      "total_amount": 1675,
+      "payment_type": "cash",
+      "cashier_id": "usr_cashier_001",
+      "cashier_name": "Moussa Koné",
+      "status": "completed",
+      "date": "2026-09-05T09:24:16.097Z",
+      "created_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "sale_002",
+      "boutique_id": "btq_demo_001",
+      "items": [
+        {
+          "product_id": "prod_002",
+          "product_name": "Riz Parfumé Jasmin 50kg",
+          "quantity": 10,
+          "unit_price": 600,
+          "total_price": 6000,
+          "unit_purchase_price": 440
+        }
+      ],
+      "total_amount": 6000,
+      "payment_type": "credit",
+      "client_id": "cli_001",
+      "client_name": "Mme Fatou Traoré",
+      "cashier_id": "usr_cashier_001",
+      "cashier_name": "Moussa Koné",
+      "status": "completed",
+      "date": "2026-09-05T09:24:16.097Z",
+      "created_at": "2026-09-05T09:24:16.097Z"
+    }
+  ],
+  "clients": [
+    {
+      "id": "cli_001",
+      "boutique_id": "btq_demo_001",
+      "name": "Mme Fatou Traoré",
+      "phone": "+221 77 123 45 67",
+      "credit_balance": 14500,
+      "total_credit_purchased": 34500,
+      "total_repaid": 20000,
+      "notes": "Voisine du quartier - paie à la fin du mois",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "cli_002",
+      "boutique_id": "btq_demo_001",
+      "name": "Ousmane Cissé (Atelier Menuiserie)",
+      "phone": "+221 70 987 65 43",
+      "credit_balance": 8250,
+      "total_credit_purchased": 18250,
+      "total_repaid": 10000,
+      "notes": "Remboursement hebdomadaire chaque vendredi",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    },
+    {
+      "id": "cli_003",
+      "boutique_id": "btq_demo_001",
+      "name": "Ibrahim Sangaré",
+      "phone": "+221 76 555 12 34",
+      "credit_balance": 0,
+      "total_credit_purchased": 15000,
+      "total_repaid": 15000,
+      "notes": "Crédit entièrement soldé hier",
+      "created_at": "2026-09-05T09:24:16.097Z",
+      "updated_at": "2026-09-05T09:24:16.097Z"
+    }
+  ],
+  "refunds": [],
+  "cash_movements": [],
+  "cash_closings": [],
+  "audit_logs": [
+    {
+      "id": "log_001",
+      "boutique_id": "btq_demo_001",
+      "user_id": "usr_admin_001",
+      "user_name": "Amadou Diallo",
+      "action": "CREATE",
+      "entity_type": "product",
+      "entity_id": "prod_001",
+      "details": "Création du produit Bonbons Menthe Fraîche (1000 FCFA/paquet de 20 -> 75 FCFA/unité)",
+      "device_info": "PC Bureau (Chrome/Linux)",
+      "timestamp": "2026-09-05T09:24:16.097Z"
+    }
+  ],
+  "active_sessions": [
+    {
+      "id": "ses_9csxsn7",
+      "user_id": "OF0QRBSJWugygikc4t7oIOXIKRn1",
+      "user_name": "pulse numerique",
+      "boutique_id": "btq_lp47gi0",
+      "device_name": "PC Windows",
+      "device_type": "desktop",
+      "browser": "Chrome",
+      "ip": "127.0.0.1",
+      "last_active": "2026-09-05T09:24:46.278Z",
+      "is_current": true
+    },
+    {
+      "id": "ses_q34m6cx",
+      "user_id": "OF0QRBSJWugygikc4t7oIOXIKRn1",
+      "user_name": "pulse numerique",
+      "boutique_id": "btq_lp47gi0",
+      "device_name": "PC Windows",
+      "device_type": "desktop",
+      "browser": "Chrome",
+      "ip": "127.0.0.1",
+      "last_active": "2026-09-05T09:24:45.277Z",
+      "is_current": true
+    }
+  ]
+}

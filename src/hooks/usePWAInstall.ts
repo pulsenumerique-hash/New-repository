@@ -10,6 +10,8 @@ export function usePWAInstall() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isInIframe, setIsInIframe] = useState(false);
+  const [isChrome, setIsChrome] = useState(false);
 
   useEffect(() => {
     // Detect standalone mode (already installed)
@@ -18,10 +20,18 @@ export function usePWAInstall() {
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsInstalled(isStandalone);
 
-    // Detect Android & iOS devices
+    // Detect iframe
+    try {
+      setIsInIframe(window.self !== window.top);
+    } catch {
+      setIsInIframe(true);
+    }
+
+    // Detect Android & iOS devices & Chrome
     const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
     setIsAndroid(/android/.test(userAgent));
     setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+    setIsChrome(/chrome|chromium|crios/.test(userAgent) && !/edg|opr\//.test(userAgent));
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -63,6 +73,8 @@ export function usePWAInstall() {
     isInstalled,
     isAndroid,
     isIOS,
+    isInIframe,
+    isChrome,
     install,
   };
 }

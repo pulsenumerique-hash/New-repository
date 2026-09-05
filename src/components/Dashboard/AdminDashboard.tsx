@@ -22,6 +22,9 @@ import {
   UserCheck,
   History,
   Ban,
+  Truck,
+  Settings,
+  RotateCcw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product } from '../../types';
@@ -701,6 +704,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             })}
           </div>
         )}
+      </div>
+
+      {/* QUICK ADMIN TOOLS: FOURNISSEURS, SAUVEGARDE ET RÉINITIALISATION */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div
+          onClick={() => setActiveTab('suppliers')}
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition cursor-pointer flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center group-hover:scale-105 transition">
+              <Truck className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-sm text-slate-900 group-hover:text-teal-700 transition">
+                Fournisseurs & Charges
+              </h4>
+              <p className="text-xs text-slate-500">
+                Gérer les dettes fournisseurs, paiements et dépenses du local
+              </p>
+            </div>
+          </div>
+          <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-teal-700 transition" />
+        </div>
+
+        <div
+          onClick={() => setActiveTab('backup')}
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition cursor-pointer flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center group-hover:scale-105 transition">
+              <Settings className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-sm text-slate-900 group-hover:text-indigo-700 transition">
+                Sauvegardes & Paramètres
+              </h4>
+              <p className="text-xs text-slate-500">
+                Exports JSON, sauvegardes Cloud et réinitialisation des données
+              </p>
+            </div>
+          </div>
+          <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-700 transition" />
+        </div>
       </div>
 
       {/* SALES HISTORY & CANCELLATION MODAL */}

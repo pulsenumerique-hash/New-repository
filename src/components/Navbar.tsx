@@ -25,9 +25,12 @@ import {
   ArrowUpCircle,
   Database,
   Trash2,
+  Truck,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import { formatCurrency } from '../lib/formatters';
 
 interface NavbarProps {
   onOpenDevices: () => void;
@@ -56,9 +59,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     refreshData,
     isLoadingData,
     products,
+    clients,
+    sales,
   } = useApp();
 
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [alertsTab, setAlertsTab] = useState<'stock' | 'credit'>('stock');
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const alertsDropdownRef = useRef<HTMLDivElement>(null);
@@ -73,6 +79,38 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, [products]);
 
   const lowStockCount = lowStockProducts.length;
+
+  // Compute clients with overdue credit lines (>= 14 days)
+  const overdueClients = useMemo(() => {
+    const now = Date.now();
+    return clients
+      .filter((c) => {
+        if (c.credit_balance <= 0) return false;
+        const clientSales = sales.filter(
+          (s) => (s.client_id === c.id || s.client_name === c.name) && s.payment_type === 'credit'
+        );
+        return clientSales.some((s) => {
+          const saleTime = new Date(s.date || s.created_at).getTime();
+          const days = Math.floor((now - saleTime) / (1000 * 60 * 60 * 24));
+          return days >= 14;
+        });
+      })
+      .map((c) => {
+        const clientSales = sales.filter(
+          (s) => (s.client_id === c.id || s.client_name === c.name) && s.payment_type === 'credit'
+        );
+        let maxDays = 0;
+        for (const s of clientSales) {
+          const saleTime = new Date(s.date || s.created_at).getTime();
+          const days = Math.floor((now - saleTime) / (1000 * 60 * 60 * 24));
+          if (days > maxDays) maxDays = days;
+        }
+        return { client: c, maxDays };
+      });
+  }, [clients, sales]);
+
+  const overdueCount = overdueClients.length;
+  const totalAlertsCount = lowStockCount + overdueCount;
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -148,8 +186,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'clients', label: 'Crédits Clients', icon: Users },
     ...(role === 'admin'
       ? [
+          { id: 'suppliers', label: 'Fournisseurs', icon: Truck },
           { id: 'cash', label: 'Gestion Caisse', icon: Wallet },
           { id: 'cashiers', label: 'Comptes Caissiers', icon: UserCheck },
+          { id: 'backup', label: 'Paramètres & Sauvegarde', icon: Settings },
         ]
       : []),
   ];
@@ -207,6 +247,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {isProductTab && lowStockCount > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse">
                       {lowStockCount}
+                    </span>
+                  )}
+                  {item.id === 'clients' && overdueCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                      {overdueCount}
                     </span>
                   )}
                 </button>
@@ -364,26 +409,26 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
 
-            {/* Stock Alerts Bell & Dropdown */}
+            {/* Alerts Bell & Dropdown (Stock & Relances Crédit J+14) */}
             <div className="relative" ref={alertsDropdownRef}>
               <button
                 id="btn-stock-alerts-bell"
                 onClick={() => setIsAlertsOpen((prev) => !prev)}
-                title={lowStockCount > 0 ? `${lowStockCount} alertes de stock bas` : 'Alertes de stock'}
+                title={totalAlertsCount > 0 ? `${totalAlertsCount} alerte(s) active(s)` : 'Alertes de gestion'}
                 className={`p-2 rounded-xl transition border relative ${
-                  lowStockCount > 0
+                  totalAlertsCount > 0
                     ? 'text-amber-300 bg-amber-950/60 border-amber-500/50 hover:bg-amber-900/70'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800 border-transparent hover:border-slate-700'
                 }`}
               >
-                {lowStockCount > 0 ? (
+                {totalAlertsCount > 0 ? (
                   <BellRing className="w-4 h-4 text-amber-400 animate-pulse" />
                 ) : (
                   <Bell className="w-4 h-4" />
                 )}
-                {lowStockCount > 0 && (
+                {totalAlertsCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white font-black text-[9px] flex items-center justify-center border-2 border-slate-900 shadow-xs">
-                    {lowStockCount > 9 ? '9+' : lowStockCount}
+                    {totalAlertsCount > 9 ? '9+' : totalAlertsCount}
                   </span>
                 )}
               </button>
@@ -394,71 +439,161 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      <span className="font-extrabold text-sm text-white">Alertes de Stock Automatiques</span>
+                      <span className="font-extrabold text-sm text-white">Centre de Notifications</span>
                     </div>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                      lowStockCount > 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300'
-                    }`}>
-                      {lowStockCount > 0 ? `${lowStockCount} sous le seuil` : 'Stock Optimal'}
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        totalAlertsCount > 0
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {totalAlertsCount > 0 ? `${totalAlertsCount} active(s)` : 'Tout est OK'}
                     </span>
                   </div>
 
-                  {lowStockCount === 0 ? (
-                    <div className="py-6 text-center text-slate-400">
-                      <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
-                      <p className="font-bold text-slate-300">Aucune alerte de stock</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Tous les articles sont au-dessus de leur seuil de sécurité.</p>
-                    </div>
+                  {/* Switch Tabs */}
+                  <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-2xl border border-slate-700/60">
+                    <button
+                      type="button"
+                      onClick={() => setAlertsTab('stock')}
+                      className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        alertsTab === 'stock'
+                          ? 'bg-slate-700 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>📦 Stock</span>
+                      {lowStockCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
+                          {lowStockCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlertsTab('credit')}
+                      className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        alertsTab === 'credit'
+                          ? 'bg-slate-700 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>📲 Relances J+14</span>
+                      {overdueCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                          {overdueCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {alertsTab === 'stock' ? (
+                    lowStockCount === 0 ? (
+                      <div className="py-6 text-center text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                        <p className="font-bold text-slate-300">Aucune alerte de stock</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Tous les articles sont au-dessus de leur seuil de sécurité.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                        {lowStockProducts.slice(0, 5).map((p) => {
+                          const threshold = p.min_alert_threshold ?? 10;
+                          const isOut = p.unit_stock <= 0;
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                setActiveTab('products');
+                                setIsAlertsOpen(false);
+                              }}
+                              className="p-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 cursor-pointer transition flex items-center justify-between"
+                            >
+                              <div>
+                                <div className="font-bold text-slate-200 line-clamp-1">{p.name}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  {p.package_type} • Seuil : {threshold} u
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span
+                                  className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                    isOut
+                                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                  }`}
+                                >
+                                  {isOut ? 'Rupture (0)' : `${p.unit_stock} restants`}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {lowStockCount > 5 && (
+                          <p className="text-[10px] text-center text-slate-400 pt-1">
+                            + {lowStockCount - 5} autre(s) référence(s) en alerte
+                          </p>
+                        )}
+                        <button
+                          id="btn-goto-products-alerts"
+                          onClick={() => {
+                            setActiveTab('products');
+                            setIsAlertsOpen(false);
+                          }}
+                          className="w-full mt-2 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-center transition shadow-md cursor-pointer"
+                        >
+                          Gérer le stock dans Produits →
+                        </button>
+                      </div>
+                    )
                   ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {lowStockProducts.slice(0, 5).map((p) => {
-                        const threshold = p.min_alert_threshold ?? 10;
-                        const isOut = p.unit_stock <= 0;
-                        return (
+                    overdueCount === 0 ? (
+                      <div className="py-6 text-center text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                        <p className="font-bold text-slate-300">Aucune relance J+14 en attente</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Tous les crédits sont récents ou déjà régularisés.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                        {overdueClients.map(({ client, maxDays }) => (
                           <div
-                            key={p.id}
+                            key={client.id}
                             onClick={() => {
-                              setActiveTab('products');
+                              setActiveTab('clients');
                               setIsAlertsOpen(false);
                             }}
-                            className="p-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 cursor-pointer transition flex items-center justify-between"
+                            className="p-2.5 rounded-2xl bg-rose-950/40 hover:bg-rose-900/40 border border-rose-800/60 cursor-pointer transition flex items-center justify-between"
                           >
                             <div>
-                              <div className="font-bold text-slate-200 line-clamp-1">{p.name}</div>
-                              <div className="text-[10px] text-slate-400">
-                                {p.package_type} • Seuil : {threshold} u
+                              <div className="font-bold text-rose-200">{client.name}</div>
+                              <div className="text-[10px] text-rose-300/80">
+                                Achat il y a {maxDays} jours • Tél : {client.phone || 'Non renseigné'}
                               </div>
                             </div>
                             <div className="text-right">
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                                isOut
-                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                              }`}>
-                                {isOut ? 'Rupture (0)' : `${p.unit_stock} restants`}
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                {formatCurrency(client.credit_balance)}
                               </span>
                             </div>
                           </div>
-                        );
-                      })}
-                      {lowStockCount > 5 && (
-                        <p className="text-[10px] text-center text-slate-400 pt-1">
-                          + {lowStockCount - 5} autre(s) référence(s) en alerte
-                        </p>
-                      )}
-                    </div>
+                        ))}
+                        <button
+                          id="btn-goto-credits-relances"
+                          onClick={() => {
+                            setActiveTab('clients');
+                            setIsAlertsOpen(false);
+                          }}
+                          className="w-full mt-2 py-2 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-black rounded-xl text-center transition shadow-md cursor-pointer"
+                        >
+                          Ouvrir la gestion des crédits & relances →
+                        </button>
+                      </div>
+                    )
                   )}
-
-                  <button
-                    id="btn-goto-products-alerts"
-                    onClick={() => {
-                      setActiveTab('products');
-                      setIsAlertsOpen(false);
-                    }}
-                    className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-center transition shadow-md cursor-pointer"
-                  >
-                    Gérer les alertes dans Produits & Stock →
-                  </button>
                 </div>
               )}
             </div>
@@ -496,16 +631,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Smartphone className="w-4 h-4" />
             </button>
 
-            {/* Android USB Cable & APK install button */}
+            {/* Android PWA install button */}
             <button
               id="btn-open-pwa"
               onClick={onOpenPWA}
-              title="Installer sur téléphone Android (Câble USB / APK)"
+              title="Installer BoutiquePro sur votre téléphone Android"
               className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 text-xs font-black text-slate-950 bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 hover:from-teal-300 hover:to-emerald-300 rounded-xl transition shadow-md shadow-teal-500/25 cursor-pointer active:scale-95 border border-teal-200/50"
             >
-              <Usb className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 animate-pulse" />
-              <span className="hidden md:inline">Installer Android (USB / APK)</span>
-              <span className="md:hidden">Installer Android</span>
+              <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950" />
+              <span className="hidden md:inline">Installer Android</span>
+              <span className="md:hidden">Installer</span>
             </button>
 
             {/* Audit log (Admin only) */}
@@ -554,6 +689,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {isProductTab && lowStockCount > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse">
                     {lowStockCount}
+                  </span>
+                )}
+                {item.id === 'clients' && overdueCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                    {overdueCount}
                   </span>
                 )}
               </button>

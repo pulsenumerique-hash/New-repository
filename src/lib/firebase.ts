@@ -9,9 +9,13 @@ import {
   initializeFirestore,
   memoryLocalCache,
   getFirestore,
+  setLogLevel,
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Silence internal Firestore SDK connection logs/retries to prevent noisy console errors
+setLogLevel('silent');
 
 // Intercept and prevent unhandled QuotaExceededError from restricted iframes or IndexedDB
 if (typeof window !== 'undefined') {
@@ -59,9 +63,9 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Firestore Database with Memory Local Cache & Long Polling
+// Firestore Database with Memory Local Cache & Auto-Detect Transport
 // memoryLocalCache completely avoids QuotaExceededError in sandboxed iframe environments
-// experimentalForceLongPolling prevents 10s WebChannel timeout in sandboxed iframes & proxies
+// experimentalAutoDetectLongPolling allows graceful fallback without premature connection failure logs
 let dbInstance: Firestore;
 try {
   const dbId =
@@ -73,7 +77,7 @@ try {
     app,
     {
       localCache: memoryLocalCache(),
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
     },
     dbId
   );

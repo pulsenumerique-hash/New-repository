@@ -16,10 +16,12 @@ import {
   Store,
   FileText,
   KeyRound,
+  RotateCcw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../lib/formatters';
+import { ResetAppModal } from '../Common/ResetAppModal';
 
 export const BackupManagement: React.FC = () => {
   const {
@@ -29,6 +31,7 @@ export const BackupManagement: React.FC = () => {
     saveCloudBackup,
     getCloudBackups,
     restoreCloudBackup,
+    resetAllBusinessData,
     updateBoutiqueSettings,
     lockPin,
     setLockPin,
@@ -55,6 +58,7 @@ export const BackupManagement: React.FC = () => {
   const [boutiqueAddress, setBoutiqueAddress] = useState(boutique?.address || '');
   const [newPin, setNewPin] = useState(lockPin || '1234');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const fetchCloudBackups = async () => {
     setIsLoadingBackups(true);
@@ -419,6 +423,45 @@ export const BackupManagement: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* ZONE DE DANGER : RÉINITIALISATION COMPLÈTE DE L'APPLICATION */}
+      <div className="bg-white rounded-3xl border border-rose-200 p-6 shadow-sm overflow-hidden relative">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                <span>Réinitialisation complète de l'application</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                  Zone sensible
+                </span>
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                Efface définitivement toutes les données opérationnelles (produits, achats, ventes, caisse, dettes, historique) et remet tous les compteurs à zéro. Votre compte et vos identifiants d'accès restent conservés.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="btn-open-reset-app-modal"
+            type="button"
+            onClick={() => setIsResetModalOpen(true)}
+            className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-2xl shadow-md hover:shadow-lg transition active:scale-95 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Réinitialiser l'application</span>
+          </button>
+        </div>
+      </div>
+
+      {/* MODAL DE CONFIRMATION DE RÉINITIALISATION */}
+      <ResetAppModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onConfirmReset={resetAllBusinessData}
+      />
     </div>
   );
 };

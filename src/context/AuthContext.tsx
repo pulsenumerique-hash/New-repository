@@ -3,6 +3,7 @@ import { User, Boutique } from '../types';
 import { firebaseAuthService } from '../services/firebaseAuth';
 import { realtimeClient } from '../services/realtime';
 import { api, setStoredToken } from '../services/api';
+import { offlineStorage } from '../services/offlineStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -132,6 +133,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      // Purge any stale offline queue items from previous sessions to guarantee a pristine 0-balance new account
+      offlineStorage.clearQueue();
+
       const res = await firebaseAuthService.registerWithEmail({
         firstName: payload.first_name,
         lastName: payload.last_name,
@@ -139,6 +143,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: payload.email,
         password: payload.password,
       });
+      // Purge any accidental local cache for this new boutique id
+      offlineStorage.clearBoutiqueData(res.boutique.id);
       setUser(res.user);
       setBoutique(res.boutique);
       setNeedsEmailVerification(res.needsEmailVerification);
@@ -200,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setStoredToken(null);
+    offlineStorage.clearQueue();
     firebaseAuthService.logout();
     setUser(null);
     setBoutique(null);

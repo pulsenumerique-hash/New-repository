@@ -239,7 +239,27 @@ export const firebaseDb = {
   },
 
   async deleteProduct(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'products', id));
+    try {
+      await deleteDoc(doc(db, 'products', id));
+    } catch {
+      const q = query(collection(db, 'products'), where('id', '==', id));
+      const snap = await getDocs(q);
+      const promises: Promise<void>[] = [];
+      snap.forEach((d) => promises.push(deleteDoc(d.ref)));
+      await Promise.all(promises);
+    }
+  },
+
+  async deleteSale(id: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'sales', id));
+    } catch {
+      const q = query(collection(db, 'sales'), where('id', '==', id));
+      const snap = await getDocs(q);
+      const promises: Promise<void>[] = [];
+      snap.forEach((d) => promises.push(deleteDoc(d.ref)));
+      await Promise.all(promises);
+    }
   },
 
   // 2. Sales (With Stock Deduction and Client Debt updates in Firestore)
@@ -655,5 +675,38 @@ export const firebaseDb = {
 
   async deleteCashier(id: string): Promise<void> {
     await deleteDoc(doc(db, 'cashiers', id));
+  },
+
+  // --- RÉINITIALISATION COMPLÈTE DE TOUTES LES DONNÉES MÉTIER ---
+  async resetAllBusinessData(boutiqueId: string): Promise<void> {
+    if (!boutiqueId) return;
+
+    const collectionsToClear = [
+      'products',
+      'sales',
+      'clients',
+      'refunds',
+      'cash_movements',
+      'cash_closings',
+      'suppliers',
+      'supplier_payments',
+      'expenses',
+      'audit_logs',
+      'backups',
+    ];
+
+    for (const colName of collectionsToClear) {
+      try {
+        const q = query(collection(db, colName), where('boutique_id', '==', boutiqueId));
+        const snapshot = await getDocs(q);
+        const deletePromises: Promise<void>[] = [];
+        snapshot.forEach((docSnap) => {
+          deletePromises.push(deleteDoc(docSnap.ref));
+        });
+        await Promise.all(deletePromises);
+      } catch (err) {
+        console.warn(`Firestore: impossible de vider la collection ${colName}:`, err);
+      }
+    }
   },
 };

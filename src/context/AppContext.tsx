@@ -3,6 +3,7 @@ import {
   Product,
   Sale,
   Client,
+  ClientReminderRecord,
   Refund,
   CashMovement,
   CashClosing,
@@ -59,6 +60,7 @@ interface AppContextType {
     payment_method_detail?: PaymentMethodDetail;
     client_id?: string | null;
     client_name?: string | null;
+    client_phone?: string | null;
   }) => Promise<Sale>;
   cancelSale: (saleId: string, reason: string) => Promise<void>;
   createProduct: (payload: Partial<Product>) => Promise<Product>;
@@ -107,6 +109,7 @@ interface AppContextType {
     data_json: string;
   }>>;
   restoreCloudBackup: (backupId: string) => Promise<void>;
+  resetAllBusinessData: () => Promise<void>;
   updateBoutiqueSettings: (settings: Partial<Boutique>) => Promise<void>;
   revokeSession: (sessionId: string) => Promise<void>;
   cashiers: User[];
@@ -117,8 +120,35 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Helper to guarantee a pure zeroed stats state on any new boutique
+const createZeroStats = (): DashboardStats => ({
+  solde_caisse: 0,
+  ventes_jour: 0,
+  ventes_semaine: 0,
+  ventes_mois: 0,
+  ventes_cash_total: 0,
+  ventes_mobile_money_total: 0,
+  ventes_credit_total: 0,
+  valeur_stock_achat: 0,
+  valeur_stock_vente: 0,
+  total_credits_en_cours: 0,
+  nb_clients_debiteurs: 0,
+  nb_credits_en_retard: 0,
+  total_dettes_fournisseurs: 0,
+  total_depenses_mois: 0,
+  benefice_brut_estime: 0,
+  benefice_net_reel: 0,
+  nb_produits: 0,
+  nb_produits_alerte: 0,
+  nb_produits_perimes: 0,
+  nb_produits_bientot_perimes: 0,
+  retraits_total: 0,
+  injections_total: 0,
+});
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, user, boutique, role } = useAuth();
+  const activeBoutiqueIdRef = useRef<string | null>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -220,47 +250,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Initial local cache hydration on boutique load (Zero waiting offline)
   useEffect(() => {
+    activeBoutiqueIdRef.current = boutique?.id || null;
+
     if (boutique?.id) {
-      const cachedProducts = offlineStorage.getCache<Product[]>(`products_${boutique.id}`);
-      if (cachedProducts && cachedProducts.length > 0) {
-        setProducts((curr) => (curr.length === 0 ? cachedProducts : curr));
-      }
-      const cachedSales = offlineStorage.getCache<Sale[]>(`sales_${boutique.id}`);
-      if (cachedSales && cachedSales.length > 0) {
-        setSales((curr) => (curr.length === 0 ? cachedSales : curr));
-      }
-      const cachedClients = offlineStorage.getCache<Client[]>(`clients_${boutique.id}`);
-      if (cachedClients && cachedClients.length > 0) {
-        setClients((curr) => (curr.length === 0 ? cachedClients : curr));
-      }
-      const cachedRefunds = offlineStorage.getCache<Refund[]>(`refunds_${boutique.id}`);
-      if (cachedRefunds && cachedRefunds.length > 0) {
-        setRefunds((curr) => (curr.length === 0 ? cachedRefunds : curr));
-      }
-      const cachedMovements = offlineStorage.getCache<CashMovement[]>(`movements_${boutique.id}`);
-      if (cachedMovements && cachedMovements.length > 0) {
-        setMovements((curr) => (curr.length === 0 ? cachedMovements : curr));
-      }
-      const cachedClosings = offlineStorage.getCache<CashClosing[]>(`closings_${boutique.id}`);
-      if (cachedClosings && cachedClosings.length > 0) {
-        setClosings((curr) => (curr.length === 0 ? cachedClosings : curr));
-      }
-      const cachedSuppliers = offlineStorage.getCache<Supplier[]>(`suppliers_${boutique.id}`);
-      if (cachedSuppliers && cachedSuppliers.length > 0) {
-        setSuppliers((curr) => (curr.length === 0 ? cachedSuppliers : curr));
-      }
-      const cachedExpenses = offlineStorage.getCache<Expense[]>(`expenses_${boutique.id}`);
-      if (cachedExpenses && cachedExpenses.length > 0) {
-        setExpenses((curr) => (curr.length === 0 ? cachedExpenses : curr));
-      }
-      const cachedAuditLogs = offlineStorage.getCache<AuditLog[]>(`auditlogs_${boutique.id}`);
-      if (cachedAuditLogs && cachedAuditLogs.length > 0) {
-        setAuditLogs((curr) => (curr.length === 0 ? cachedAuditLogs : curr));
-      }
+      // Purge any stale memory from another account and load strictly this boutique's cache
+      const cachedProducts = offlineStorage.getCache<Product[]>(`products_${boutique.id}`) || [];
+      const cachedSales = offlineStorage.getCache<Sale[]>(`sales_${boutique.id}`) || [];
+      const cachedClients = offlineStorage.getCache<Client[]>(`clients_${boutique.id}`) || [];
+      const cachedRefunds = offlineStorage.getCache<Refund[]>(`refunds_${boutique.id}`) || [];
+      const cachedMovements = offlineStorage.getCache<CashMovement[]>(`movements_${boutique.id}`) || [];
+      const cachedClosings = offlineStorage.getCache<CashClosing[]>(`closings_${boutique.id}`) || [];
+      const cachedSuppliers = offlineStorage.getCache<Supplier[]>(`suppliers_${boutique.id}`) || [];
+      const cachedExpenses = offlineStorage.getCache<Expense[]>(`expenses_${boutique.id}`) || [];
+      const cachedAuditLogs = offlineStorage.getCache<AuditLog[]>(`auditlogs_${boutique.id}`) || [];
+      const cachedCashiers = offlineStorage.getCache<User[]>(`cashiers_${boutique.id}`) || [];
       const cachedStats = offlineStorage.getCache<DashboardStats>(`stats_${boutique.id}`);
+
+      setProducts(cachedProducts);
+      setSales(cachedSales);
+      setClients(cachedClients);
+      setRefunds(cachedRefunds);
+      setMovements(cachedMovements);
+      setClosings(cachedClosings);
+      setSuppliers(cachedSuppliers);
+      setExpenses(cachedExpenses);
+      setAuditLogs(cachedAuditLogs);
+      setCashiers(cachedCashiers);
+
       if (cachedStats) {
         setStats(cachedStats);
+      } else {
+        // ALWAYS start a brand-new boutique with strictly 0 FCFA in the cash register
+        setStats(createZeroStats());
       }
+    } else {
+      setProducts([]);
+      setSales([]);
+      setClients([]);
+      setRefunds([]);
+      setMovements([]);
+      setClosings([]);
+      setSessions([]);
+      setSuppliers([]);
+      setExpenses([]);
+      setAuditLogs([]);
+      setCashiers([]);
+      setStats(null);
     }
   }, [boutique?.id]);
 
@@ -280,7 +315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Compute live dashboard stats whenever boutique or sub-collections change
   useEffect(() => {
-    if (boutique) {
+    if (boutique && activeBoutiqueIdRef.current === boutique.id) {
       const liveStats = firebaseDb.calculateDashboardStats(
         boutique,
         products,
@@ -430,6 +465,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuppliers([]);
       setExpenses([]);
       setAuditLogs([]);
+      setCashiers([]);
+      setStats(null);
       return;
     }
 
@@ -563,26 +600,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     payment_method_detail?: PaymentMethodDetail;
     client_id?: string | null;
     client_name?: string | null;
+    client_phone?: string | null;
   }): Promise<Sale> => {
     if (!boutique || !user) throw new Error('Utilisateur non connecté.');
 
     let finalClientId = payload.client_id || null;
     let finalClientName = payload.client_name || null;
+    const cleanPhone = payload.client_phone ? payload.client_phone.trim() : null;
 
     if (payload.payment_type === 'credit') {
-      if (!finalClientName && !finalClientId) {
-        throw new Error('Pour une vente à crédit, le nom du client est obligatoire.');
+      if (!finalClientName && !finalClientId && !cleanPhone) {
+        throw new Error('Pour une vente à crédit, le nom et le numéro WhatsApp du client sont obligatoires.');
       }
+
+      // 1. Chercher d'abord si un client existe avec ce numéro WhatsApp
+      if (cleanPhone) {
+        const normalizedDigits = cleanPhone.replace(/[^0-9]/g, '');
+        const matchByPhone = clients.find(
+          (c) => c.phone && c.phone.replace(/[^0-9]/g, '') === normalizedDigits
+        );
+        if (matchByPhone) {
+          finalClientId = matchByPhone.id;
+          finalClientName = matchByPhone.name;
+        }
+      }
+
+      // 2. Si pas trouvé par téléphone, chercher par nom ou identifiant
       if (!finalClientId && finalClientName) {
         const match = clients.find((c) => c.name.toLowerCase() === finalClientName!.trim().toLowerCase());
         if (match) {
           finalClientId = match.id;
           finalClientName = match.name;
+          if (!match.phone && cleanPhone) {
+            updateClient(match.id, { phone: cleanPhone });
+          }
         } else {
           const newClient: Client = {
             id: 'cli_' + Math.random().toString(36).substring(2, 9),
             boutique_id: boutique.id,
             name: finalClientName.trim(),
+            phone: cleanPhone || undefined,
             credit_balance: 0,
             total_credit_purchased: 0,
             total_repaid: 0,
@@ -957,23 +1014,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProduct = async (id: string): Promise<void> => {
     const existing = products.find((p) => p.id === id);
+
+    // Prevent any enqueued offline creation/update from reviving this product later
+    offlineStorage.removeQueuedActionsForEntity(id);
+
+    // Immediate optimistic local update
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== id);
       if (boutique) offlineStorage.setCache(`products_${boutique.id}`, updated);
       return updated;
     });
 
-    if (navigator.onLine) {
-      try {
-        await firebaseDb.deleteProduct(id);
-      } catch (err) {
-        offlineStorage.enqueue({
-          type: 'DELETE_PRODUCT',
-          title: `Suppression : ${existing?.name || id}`,
-          payload: { id },
-        });
-      }
-    } else {
+    // Remove from active cart in localStorage if present
+    try {
+      localStorage.removeItem('boutiquepro_cart');
+      if (boutique) localStorage.removeItem(`boutiquepro_cart_${boutique.id}`);
+      window.dispatchEvent(new CustomEvent('boutiquepro_cart_clear'));
+    } catch {}
+
+    // Delete in Firebase & Backend API
+    try {
+      await firebaseDb.deleteProduct(id);
+    } catch (err) {
+      console.warn('Firebase deleteProduct enqueued:', err);
       offlineStorage.enqueue({
         type: 'DELETE_PRODUCT',
         title: `Suppression : ${existing?.name || id}`,
@@ -981,7 +1044,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    createAuditLog('DELETE', 'product', `Suppression produit "${existing?.name || id}"`, id);
+    api.deleteProduct(id).catch(() => {});
+    createAuditLog('DELETE', 'product', `Suppression définitive du produit "${existing?.name || id}"`, id);
   };
 
   const createClient = async (payload: { name: string; phone?: string; notes?: string; due_date?: string }): Promise<Client> => {
@@ -1070,23 +1134,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error(`Impossible de supprimer : le client a une dette en cours de ${client.credit_balance.toLocaleString('fr-FR')} FCFA.`);
     }
 
+    // Prevent any enqueued offline creation/update from reviving this client later
+    offlineStorage.removeQueuedActionsForEntity(id);
+
     setClients((prev) => {
       const updated = prev.filter((c) => c.id !== id);
       if (boutique) offlineStorage.setCache(`clients_${boutique.id}`, updated);
       return updated;
     });
 
-    if (navigator.onLine) {
-      try {
-        await firebaseDb.deleteClient(id);
-      } catch (err) {
-        offlineStorage.enqueue({
-          type: 'DELETE_CLIENT',
-          title: `Suppression client : ${client.name}`,
-          payload: { id },
-        });
-      }
-    } else {
+    try {
+      await firebaseDb.deleteClient(id);
+    } catch (err) {
+      console.warn('Firebase deleteClient enqueued:', err);
       offlineStorage.enqueue({
         type: 'DELETE_CLIENT',
         title: `Suppression client : ${client.name}`,
@@ -1094,17 +1154,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    createAuditLog('DELETE', 'client', `Suppression client "${client.name}"`, id);
+    api.deleteClient(id).catch(() => {});
+    createAuditLog('DELETE', 'client', `Suppression définitive du client "${client.name}"`, id);
   };
 
   const sendClientReminder = async (client: Client): Promise<void> => {
     const now = new Date().toISOString();
-    await updateClient(client.id, { last_reminder_date: now });
+    const todayDateStr = now.split('T')[0];
+
+    const newRecord: ClientReminderRecord = {
+      date: now,
+      amount: client.credit_balance,
+      channel: 'whatsapp',
+      sent_by: user ? `${user.first_name} ${user.last_name}` : 'Admin',
+    };
+
+    const updatedHistory = [...(client.reminder_history || []), newRecord];
+    await updateClient(client.id, {
+      last_reminder_date: now,
+      reminder_history: updatedHistory,
+    });
 
     const boutiqueName = boutique?.name || 'Notre boutique';
     const amount = (client.credit_balance || 0).toLocaleString('fr-FR');
     const message = encodeURIComponent(
-      `Bonjour ${client.name}, sauf erreur de notre part, vous avez un solde impayé de ${amount} FCFA chez ${boutiqueName}. Merci de bien vouloir régulariser dès que possible. Cordialement.`
+      `Bonjour ${client.name}, sauf erreur de notre part, vous avez un solde restant dû de ${amount} FCFA chez ${boutiqueName}. Merci de bien vouloir passer en boutique dès que possible pour régulariser votre compte. Excellente journée !`
     );
 
     if (client.phone) {
@@ -1117,7 +1191,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createAuditLog(
       'UPDATE',
       'client',
-      `Relance de créance envoyée à ${client.name} (${amount} FCFA)`
+      `Relance de créance envoyée à ${client.name} (${amount} FCFA)`,
+      client.id
     );
   };
 
@@ -1437,23 +1512,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error(`Dette en cours (${existing.debt_balance.toLocaleString('fr-FR')} FCFA). Réglez la dette avant suppression.`);
     }
 
+    offlineStorage.removeQueuedActionsForEntity(id);
+
     setSuppliers((prev) => {
       const list = prev.filter((s) => s.id !== id);
       if (boutique) offlineStorage.setCache(`suppliers_${boutique.id}`, list);
       return list;
     });
 
-    if (navigator.onLine) {
-      try {
-        await firebaseDb.deleteSupplier(id);
-      } catch {
-        offlineStorage.enqueue({
-          type: 'DELETE_SUPPLIER',
-          title: `Suppression fournisseur : ${existing?.name || id}`,
-          payload: { id },
-        });
-      }
-    } else {
+    try {
+      await firebaseDb.deleteSupplier(id);
+    } catch {
       offlineStorage.enqueue({
         type: 'DELETE_SUPPLIER',
         title: `Suppression fournisseur : ${existing?.name || id}`,
@@ -1591,23 +1660,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteExpense = async (id: string): Promise<void> => {
     const existing = expenses.find((e) => e.id === id);
+
+    offlineStorage.removeQueuedActionsForEntity(id);
+
     setExpenses((prev) => {
       const list = prev.filter((e) => e.id !== id);
       if (boutique) offlineStorage.setCache(`expenses_${boutique.id}`, list);
       return list;
     });
 
-    if (navigator.onLine) {
-      try {
-        await firebaseDb.deleteExpense(id);
-      } catch {
-        offlineStorage.enqueue({
-          type: 'DELETE_EXPENSE',
-          title: `Suppression dépense : ${existing?.category_label || id}`,
-          payload: { id },
-        });
-      }
-    } else {
+    try {
+      await firebaseDb.deleteExpense(id);
+    } catch {
       offlineStorage.enqueue({
         type: 'DELETE_EXPENSE',
         title: `Suppression dépense : ${existing?.category_label || id}`,
@@ -1615,7 +1679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    createAuditLog('DELETE', 'expense', `Suppression dépense "${existing?.description || id}"`, id);
+    createAuditLog('DELETE', 'expense', `Suppression définitive de la dépense "${existing?.description || id}"`, id);
   };
 
   // --- BACKUP & RESTORATION ---
@@ -1819,6 +1883,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // --- RÉINITIALISATION COMPLÈTE DE TOUTES LES DONNÉES MÉTIER ---
+  const resetAllBusinessData = async (): Promise<void> => {
+    if (!boutique) throw new Error('Aucune boutique active.');
+
+    // 1. Suppression définitive dans Firebase Firestore de toutes les collections métier
+    try {
+      await firebaseDb.resetAllBusinessData(boutique.id);
+    } catch (err) {
+      console.warn('Erreur Firestore lors de la réinitialisation:', err);
+    }
+
+    // 2. Suppression côté serveur d'API si actif
+    try {
+      await api.resetBoutiqueBusinessData();
+    } catch (err) {
+      console.warn('Notice réinitialisation serveur API:', err);
+    }
+
+    // 3. Nettoyage complet du cache local et de la file d'attente hors-ligne
+    offlineStorage.clearQueue();
+    offlineStorage.clearBoutiqueData(boutique.id);
+    try {
+      localStorage.removeItem('boutiquepro_cart');
+      localStorage.removeItem(`boutiquepro_cart_${boutique.id}`);
+      localStorage.removeItem('boutiquepro_recent_product');
+      localStorage.removeItem(`draft_sale_${boutique.id}`);
+    } catch {}
+
+    // 4. Remise à zéro réelle et immédiate de tous les états métier en mémoire
+    setProducts([]);
+    setSales([]);
+    setClients([]);
+    setRefunds([]);
+    setMovements([]);
+    setClosings([]);
+    setSuppliers([]);
+    setExpenses([]);
+    setAuditLogs([]);
+    try {
+      window.dispatchEvent(new CustomEvent('boutiquepro_cart_clear'));
+    } catch {}
+
+    // 5. Journal d'audit pour consigner l'événement
+    createAuditLog('DELETE', 'boutique', 'Réinitialisation complète de toutes les données métier (remise à zéro)');
+
+    // 6. Recalcul immédiat des statistiques et compteurs (tous à 0)
+    await refreshData();
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1880,6 +1993,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveCloudBackup,
         getCloudBackups,
         restoreCloudBackup,
+        resetAllBusinessData,
         updateBoutiqueSettings,
         revokeSession,
       }}

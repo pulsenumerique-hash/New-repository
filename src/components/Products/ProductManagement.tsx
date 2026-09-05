@@ -29,6 +29,7 @@ import { formatCurrency, formatDateShort } from '../../lib/formatters';
 import { StockAlertBanner } from './StockAlertBanner';
 import { QuickRestockModal } from './QuickRestockModal';
 import { SupplierOrderModal } from './SupplierOrderModal';
+import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
 
 export const ProductManagement: React.FC = () => {
   const { products, suppliers, createProduct, updateProduct, deleteProduct } = useApp();
@@ -1144,87 +1145,23 @@ export const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMATION DE SUPPRESSION (AVEC SÉCURITÉ ET HISTORIQUE PRÉSERVÉ) */}
-      {productToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
-            <div className="p-5 bg-gradient-to-r from-rose-900 to-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300">
-                  <Trash2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base">Supprimer le produit du stock</h3>
-                  <p className="text-xs text-rose-200 mt-0.5">Cette action est irréversible</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setProductToDelete(null)}
-                disabled={isDeletingProduct}
-                className="text-white/70 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Produit sélectionné
-                </span>
-                <h4 className="text-base font-black text-slate-900 mt-0.5">{productToDelete.name}</h4>
-                <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-2">
-                  <span>Catégorie : <strong>{productToDelete.category}</strong></span>
-                  <span>•</span>
-                  <span>Stock : <strong>{productToDelete.unit_stock} unités</strong></span>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong>Voulez-vous vraiment supprimer ce produit ?</strong>
-                  <p className="mt-0.5 text-[11px] text-rose-800">
-                    Cette action retire définitivement le produit du stock et de la liste des produits actifs.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong>Conservation de l'historique de vente :</strong>
-                  <p className="mt-0.5 text-[11px] text-emerald-800 font-medium">
-                    L'historique des ventes déjà réalisées avec ce produit est intégralement conservé afin de ne pas fausser vos statistiques et vos bilans de caisse.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setProductToDelete(null)}
-                disabled={isDeletingProduct}
-                className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                id="btn-confirm-delete-product"
-                type="button"
-                disabled={isDeletingProduct}
-                onClick={handleConfirmDelete}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>{isDeletingProduct ? 'Suppression...' : 'Supprimer définitivement'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL DE CONFIRMATION DE SUPPRESSION */}
+      <ConfirmDeleteModal
+        isOpen={!!productToDelete}
+        title="Supprimer le produit"
+        itemTitle={productToDelete?.name || ''}
+        itemSubtitle={
+          productToDelete
+            ? `Catégorie : ${productToDelete.category} • Stock : ${productToDelete.unit_stock} unités • Prix de vente : ${formatCurrency(productToDelete.unit_sale_price)}`
+            : undefined
+        }
+        message="Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        isLoading={isDeletingProduct}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setProductToDelete(null)}
+      />
 
       {/* Quick Restock Modal */}
       {quickRestockProduct && (

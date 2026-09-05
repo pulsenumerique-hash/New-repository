@@ -24,14 +24,19 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Client, Refund } from '../../types';
 import { formatCurrency, formatDate, formatDateShort } from '../../lib/formatters';
+import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
 
 export const CreditManagement: React.FC = () => {
-  const { clients, sales, refunds, boutique, createClient, deleteClient, createRefund } = useApp();
+  const { clients, sales, refunds, boutique, createClient, deleteClient, createRefund, sendClientReminder } = useApp();
   const { role } = useAuth();
 
   const [search, setSearch] = useState('');
-  const [filterMode, setFilterMode] = useState<'all' | 'debtors'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'debtors' | 'overdue14'>('all');
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
+
+  // Client deletion
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [isDeletingClient, setIsDeletingClient] = useState(false);
 
   // New Client Modal
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -119,7 +124,7 @@ export const CreditManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteClient = async (client: Client) => {
+  const handleDeleteClient = (client: Client) => {
     if (client.credit_balance > 0) {
       alert(
         `Impossible de supprimer le client "${client.name}" car il a encore une dette impayée de ${formatCurrency(
@@ -128,30 +133,86 @@ export const CreditManagement: React.FC = () => {
       );
       return;
     }
+    setClientToDelete(client);
+  };
 
-    if (confirm(`Confirmez-vous la suppression de la fiche de "${client.name}" ?`)) {
-      try {
-        await deleteClient(client.id);
-        if (selectedClientDetail?.id === client.id) {
-          setSelectedClientDetail(null);
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Erreur suppression';
-        alert(msg);
+  const handleConfirmDeleteClient = async () => {
+    if (!clientToDelete) return;
+    setIsDeletingClient(true);
+    try {
+      await deleteClient(clientToDelete.id);
+      if (selectedClientDetail?.id === clientToDelete.id) {
+        setSelectedClientDetail(null);
       }
+      setClientToDelete(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
+      alert(msg);
+    } finally {
+      setIsDeletingClient(false);
     }
   };
+
+  const getClientOverdueInfo = (client: Client) => {
+    if (client.credit_balance <= 0) {
+      return { isOverdue14: false, maxDaysElapsed: 0, oldestUnpaidSale: undefined };
+    }
+    const clientSales = sales.filter(
+      (s) => (s.client_id === client.id || s.client_name === client.name) && s.payment_type === 'credit'
+    );
+    if (clientSales.length === 0) {
+      return { isOverdue14: false, maxDaysElapsed: 0, oldestUnpaidSale: undefined };
+    }
+
+    const now = Date.now();
+    let maxDays = 0;
+    let oldestSale: (typeof sales)[0] | undefined;
+
+    for (const s of clientSales) {
+      const saleTime = new Date(s.date || s.created_at).getTime();
+      const days = Math.floor((now - saleTime) / (1000 * 60 * 60 * 24));
+      if (days > maxDays) {
+        maxDays = days;
+        oldestSale = s;
+      }
+    }
+
+    return {
+      isOverdue14: maxDays >= 14,
+      maxDaysElapsed: maxDays,
+      oldestUnpaidSale: oldestSale,
+    };
+  };
+
+  const overdue14ClientsCount = clients.filter((c) => getClientOverdueInfo(c).isOverdue14).length;
 
   const filteredClients = clients.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.phone && c.phone.includes(search));
-    const matchesMode = filterMode === 'all' || c.credit_balance > 0;
+    let matchesMode = true;
+    if (filterMode === 'debtors') {
+      matchesMode = c.credit_balance > 0;
+    } else if (filterMode === 'overdue14') {
+      matchesMode = getClientOverdueInfo(c).isOverdue14;
+    }
     return matchesSearch && matchesMode;
   });
 
   const getReminderMessage = (client: Client) => {
     const shopName = boutique?.name || 'BoutiquePro';
+    const overdueInfo = getClientOverdueInfo(client);
+    const dateStr = overdueInfo.oldestUnpaidSale
+      ? new Date(overdueInfo.oldestUnpaidSale.date || overdueInfo.oldestUnpaidSale.created_at).toLocaleDateString('fr-FR')
+      : '';
+    const itemsText = overdueInfo.oldestUnpaidSale
+      ? overdueInfo.oldestUnpaidSale.items.map((i) => `${i.quantity}x ${i.product_name}`).join(', ')
+      : 'achats précédents';
+
+    if (overdueInfo.isOverdue14) {
+      return `Bonjour ${client.name}, nous vous contactons concernant votre achat à crédit du ${dateStr} (${itemsText}) effectué il y a ${overdueInfo.maxDaysElapsed} jours chez ${shopName}.\nLe montant restant dû est de ${formatCurrency(client.credit_balance)}.\nMerci de bien vouloir passer en boutique dès que possible pour régulariser votre compte. Excellente journée !`;
+    }
+
     return `Bonjour ${client.name}, nous vous rappelons amicalement qu'un solde restant de ${formatCurrency(
       client.credit_balance
     )} est actuellement en attente de règlement chez ${shopName}. Merci de passer en boutique dès que possible pour régulariser votre compte. Excellente journée !`;
@@ -264,6 +325,22 @@ export const CreditManagement: React.FC = () => {
                 >
                   Débiteurs ({debtorClientsCount})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('overdue14')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                    filterMode === 'overdue14'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-amber-800 hover:text-amber-950'
+                  }`}
+                >
+                  <span>Relances J+14</span>
+                  {overdue14ClientsCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                      {overdue14ClientsCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -310,7 +387,21 @@ export const CreditManagement: React.FC = () => {
                         }`}
                       >
                         <td className="py-3.5 px-5">
-                          <div className="font-extrabold text-slate-900 text-sm">{client.name}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-slate-900 text-sm">{client.name}</span>
+                            {getClientOverdueInfo(client).isOverdue14 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1 shadow-2xs">
+                                ⚠️ Relance J+{getClientOverdueInfo(client).maxDaysElapsed} prête
+                              </span>
+                            )}
+                            {client.reminder_history?.some((r) =>
+                              r.date.startsWith(new Date().toISOString().split('T')[0])
+                            ) && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                                ✓ Relancé ajd
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                             {client.phone ? (
                               <>
@@ -483,6 +574,42 @@ export const CreditManagement: React.FC = () => {
                       </div>
                     ))}
                 </div>
+              </div>
+
+              {/* History of Reminders for this Client */}
+              <div className="mt-4 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Historique des relances ({selectedClientDetail.reminder_history?.length || 0})</span>
+                  </span>
+                </h4>
+                {(!selectedClientDetail.reminder_history || selectedClientDetail.reminder_history.length === 0) ? (
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-[11px] text-slate-400 text-center font-medium">
+                    Aucune relance envoyée pour le moment
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {selectedClientDetail.reminder_history.map((r, idx) => (
+                      <div key={idx} className="p-2.5 bg-sky-50/80 border border-sky-200/80 rounded-xl text-xs flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-sky-950 flex items-center gap-1.5">
+                            <span>{formatDate(r.date)}</span>
+                            <span className="text-[9px] bg-sky-200 text-sky-800 px-1.5 py-0.2 rounded-md uppercase font-black">
+                              {r.channel}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Par {r.sent_by || 'Admin'}
+                          </div>
+                        </div>
+                        <div className="font-black text-sky-900 text-right">
+                          {formatCurrency(r.amount)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -715,47 +842,88 @@ export const CreditManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => handleCopyReminder(getReminderMessage(reminderClient))}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition"
-              >
-                {copiedReminder ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Copié !</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 text-slate-600" />
-                    <span>Copier texte</span>
-                  </>
-                )}
-              </button>
+            {(() => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const alreadySentToday = (reminderClient.reminder_history || []).some((r) =>
+                r.date.startsWith(todayStr)
+              );
+              return (
+                <>
+                  {alreadySentToday && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-center gap-1.5 font-bold">
+                      <span>⚠️ Une relance a déjà été transmise aujourd'hui à ce client.</span>
+                    </div>
+                  )}
 
-              {reminderClient.phone ? (
-                <a
-                  href={`https://wa.me/${reminderClient.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                    getReminderMessage(reminderClient)
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>WhatsApp</span>
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl cursor-not-allowed"
-                >
-                  <span>Pas de tél</span>
-                </button>
-              )}
-            </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyReminder(getReminderMessage(reminderClient))}
+                      className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition"
+                    >
+                      {copiedReminder ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-600" />
+                          <span>Copié !</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 text-slate-600" />
+                          <span>Copier texte</span>
+                        </>
+                      )}
+                    </button>
+
+                    {reminderClient.phone ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (alreadySentToday) {
+                            const ok = window.confirm(
+                              `Une relance a déjà été envoyée aujourd'hui à ${reminderClient.name}. Souhaitez-vous quand même la renvoyer ?`
+                            );
+                            if (!ok) return;
+                          }
+                          await sendClientReminder(reminderClient);
+                          setReminderClient(null);
+                          if (selectedClientDetail?.id === reminderClient.id) {
+                            setSelectedClientDetail((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    last_reminder_date: new Date().toISOString(),
+                                    reminder_history: [
+                                      {
+                                        date: new Date().toISOString(),
+                                        amount: reminderClient.credit_balance,
+                                        channel: 'whatsapp',
+                                        sent_by: 'Admin / Caissier',
+                                      },
+                                      ...(prev.reminder_history || []),
+                                    ],
+                                  }
+                                : null
+                            );
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>{alreadySentToday ? 'Renvoyer (WhatsApp)' : 'Envoyer (WhatsApp)'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl cursor-not-allowed"
+                      >
+                        <span>Pas de tél</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             {reminderClient.phone && (
               <div className="text-center">
@@ -773,6 +941,20 @@ export const CreditManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL DE CONFIRMATION DE SUPPRESSION CLIENT */}
+      <ConfirmDeleteModal
+        isOpen={!!clientToDelete}
+        title="Supprimer la fiche client"
+        itemTitle={clientToDelete?.name || ''}
+        itemSubtitle={clientToDelete?.phone ? `Téléphone : ${clientToDelete.phone}` : undefined}
+        message="Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        isLoading={isDeletingClient}
+        onConfirm={handleConfirmDeleteClient}
+        onCancel={() => setClientToDelete(null)}
+      />
     </div>
   );
 };

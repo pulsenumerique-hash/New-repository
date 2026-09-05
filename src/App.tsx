@@ -10,6 +10,8 @@ import { ProductManagement } from './components/Products/ProductManagement';
 import { CreditManagement } from './components/Credit/CreditManagement';
 import { CashManagement } from './components/CashRegister/CashManagement';
 import { CashierManagement } from './components/Cashiers/CashierManagement';
+import { SupplierManagement } from './components/Suppliers/SupplierManagement';
+import { BackupManagement } from './components/Backup/BackupManagement';
 import { CashMovementModal } from './components/CashRegister/CashMovementModal';
 import { CashClosingModal } from './components/CashRegister/CashClosingModal';
 import { DeviceManagerModal } from './components/Devices/DeviceManagerModal';
@@ -78,6 +80,8 @@ const MainLayout: React.FC = () => {
 
         {activeTab === 'clients' && <CreditManagement />}
 
+        {activeTab === 'suppliers' && user?.role === 'admin' && <SupplierManagement />}
+
         {activeTab === 'cash' && user?.role === 'admin' && (
           <CashManagement
             onOpenWithdrawal={() => setMovementModal('withdrawal')}
@@ -87,6 +91,8 @@ const MainLayout: React.FC = () => {
         )}
 
         {activeTab === 'cashiers' && user?.role === 'admin' && <CashierManagement />}
+
+        {activeTab === 'backup' && user?.role === 'admin' && <BackupManagement />}
       </main>
 
       {/* Global Modals */}

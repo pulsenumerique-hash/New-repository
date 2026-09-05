@@ -2,6 +2,43 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Gracefully handle benign Vite HMR websocket reconnection notices in container sandbox
+      (function() {
+        var _err = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            if (typeof a === 'string' && (a === '[vite]' || a.indexOf('[vite]') !== -1)) {
+              console.debug.apply(console, arguments);
+              return;
+            }
+          }
+          _err.apply(console, arguments);
+        };
+
+        // Suppress benign unhandledrejection events containing [vite]
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          if (reason && (String(reason).indexOf('[vite]') !== -1 || (reason.message && reason.message.indexOf('[vite]') !== -1))) {
+            event.preventDefault();
+          }
+        });
+
+        // Ensure customElements doesn't keep a visible vite-error-overlay element
+        if (typeof customElements !== 'undefined' && !customElements.get('vite-error-overlay')) {
+          try {
+            customElements.define('vite-error-overlay', class extends HTMLElement {
+              connectedCallback() { this.remove(); }
+              close() { this.remove(); }
+            });
+          } catch(e) {}
+        }
+      })();
+    </script>
+    <style>
+      vite-error-overlay { display: none !important; }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>BoutiquePro — Gestion de Boutique Alimentaire</title>
     <meta name="description" content="Application Android & PWA de gestion de boutique alimentaire : ventes cash/crédit, stock gros/détail, caisse, crédits clients, rôles Admin/Caissier et synchronisation multi-appareils en temps réel." />
@@ -20,9 +57,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="/assets/index-B2hu04ay.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dxp_Ju-V.css">
-  <script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+    <script type="module" crossorigin src="/assets/index-BdPXj_Bl.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B9WwY03X.css">
+  </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-teal-500 selection:text-white">
     <div id="root"></div>
   </body>

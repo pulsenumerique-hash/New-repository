@@ -22,6 +22,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Supplier, Expense, ExpenseCategory } from '../../types';
 import { formatCurrency, formatDate, formatDateShort } from '../../lib/formatters';
+import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
 
 const EXPENSE_CATEGORIES: Array<{ key: ExpenseCategory; label: string }> = [
   { key: 'loyer', label: 'Loyer du local' },
@@ -71,6 +72,12 @@ export const SupplierManagement: React.FC = () => {
   const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expensePaymentMethod, setExpensePaymentMethod] = useState<'cash' | 'mobile_money'>('cash');
+
+  // Deletion states
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -170,13 +177,24 @@ export const SupplierManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteSupplier = async (sup: Supplier) => {
-    if (confirm(`Confirmez-vous la suppression du fournisseur "${sup.name}" ?`)) {
-      try {
-        await deleteSupplier(sup.id);
-      } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Erreur');
-      }
+  const handleDeleteSupplier = (sup: Supplier) => {
+    if (sup.debt_balance > 0) {
+      alert(`Dette en cours (${formatCurrency(sup.debt_balance)}). Réglez la dette avant suppression.`);
+      return;
+    }
+    setSupplierToDelete(sup);
+  };
+
+  const handleConfirmDeleteSupplier = async () => {
+    if (!supplierToDelete) return;
+    setIsDeletingSupplier(true);
+    try {
+      await deleteSupplier(supplierToDelete.id);
+      setSupplierToDelete(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression');
+    } finally {
+      setIsDeletingSupplier(false);
     }
   };
 
@@ -258,13 +276,20 @@ export const SupplierManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteExpense = async (exp: Expense) => {
-    if (confirm(`Supprimer la dépense de ${formatCurrency(exp.amount)} (${exp.description}) ?`)) {
-      try {
-        await deleteExpense(exp.id);
-      } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Erreur');
-      }
+  const handleDeleteExpense = (exp: Expense) => {
+    setExpenseToDelete(exp);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!expenseToDelete) return;
+    setIsDeletingExpense(true);
+    try {
+      await deleteExpense(expenseToDelete.id);
+      setExpenseToDelete(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression');
+    } finally {
+      setIsDeletingExpense(false);
     }
   };
 
@@ -865,6 +890,34 @@ export const SupplierManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* CONFIRM DELETE MODAL - FOURNISSEUR */}
+      <ConfirmDeleteModal
+        isOpen={!!supplierToDelete}
+        title="Supprimer le fournisseur"
+        itemTitle={supplierToDelete?.name || ''}
+        itemSubtitle={supplierToDelete?.phone ? `Téléphone : ${supplierToDelete.phone}` : undefined}
+        message="Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        isLoading={isDeletingSupplier}
+        onConfirm={handleConfirmDeleteSupplier}
+        onCancel={() => setSupplierToDelete(null)}
+      />
+
+      {/* CONFIRM DELETE MODAL - DÉPENSE */}
+      <ConfirmDeleteModal
+        isOpen={!!expenseToDelete}
+        title="Supprimer la dépense"
+        itemTitle={expenseToDelete ? `${expenseToDelete.category_label} : ${formatCurrency(expenseToDelete.amount)}` : ''}
+        itemSubtitle={expenseToDelete?.description ? `Détails : ${expenseToDelete.description}` : undefined}
+        message="Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        isLoading={isDeletingExpense}
+        onConfirm={handleConfirmDeleteExpense}
+        onCancel={() => setExpenseToDelete(null)}
+      />
     </div>
   );
 };

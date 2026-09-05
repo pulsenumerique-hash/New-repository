@@ -148,9 +148,9 @@ export const LoginScreen: React.FC = () => {
             <div>
               <div className="font-extrabold text-xs text-white flex items-center gap-1.5">
                 <span>Application Android</span>
-                <span className="text-[9px] bg-teal-500/20 text-teal-300 px-1.5 py-0.2 rounded-sm font-bold">APK / USB</span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-sm font-bold">PWA 1-Clic</span>
               </div>
-              <div className="text-[10px] text-slate-400">Pour téléphones Android uniquement</div>
+              <div className="text-[10px] text-slate-400">Sans mode développeur • Hors-ligne</div>
             </div>
           </div>
           <button
@@ -159,8 +159,8 @@ export const LoginScreen: React.FC = () => {
             onClick={() => setShowPwaModal(true)}
             className="px-3.5 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer shrink-0"
           >
-            <Usb className="w-3.5 h-3.5 animate-pulse" />
-            <span>Installer (USB / APK)</span>
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Installer Android</span>
           </button>
         </div>
       </div>

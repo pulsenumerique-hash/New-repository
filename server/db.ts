@@ -316,30 +316,7 @@ class DatabaseService {
       }
     ];
 
-    const cash_movements: CashMovement[] = [
-      {
-        id: 'mov_001',
-        boutique_id: boutiqueId,
-        type: 'injection',
-        amount: 50000,
-        reason: 'Renforcement fond de caisse pour début de semaine',
-        author: 'Amadou Diallo (Gérant)',
-        cashier_id: adminId,
-        date: now,
-        created_at: now,
-      },
-      {
-        id: 'mov_002',
-        boutique_id: boutiqueId,
-        type: 'withdrawal',
-        amount: 5000,
-        reason: 'Paiement facture d’électricité de la boutique (Woyofal)',
-        author: 'Amadou Diallo',
-        cashier_id: adminId,
-        date: now,
-        created_at: now,
-      }
-    ];
+    const cash_movements: CashMovement[] = [];
 
     const audit_logs: AuditLog[] = [
       {
@@ -751,6 +728,18 @@ class DatabaseService {
       stats: this.getDashboardStats(boutiqueId),
       server_timestamp: new Date().toISOString(),
     };
+  }
+
+  // --- RESET ALL BUSINESS DATA ---
+  resetBoutiqueBusinessData(boutiqueId: string) {
+    this.data.products = this.data.products.filter((p) => p.boutique_id !== boutiqueId);
+    this.data.sales = this.data.sales.filter((s) => s.boutique_id !== boutiqueId);
+    this.data.clients = this.data.clients.filter((c) => c.boutique_id !== boutiqueId);
+    this.data.refunds = this.data.refunds.filter((r) => r.boutique_id !== boutiqueId);
+    this.data.cash_movements = this.data.cash_movements.filter((m) => m.boutique_id !== boutiqueId);
+    this.data.cash_closings = this.data.cash_closings.filter((c) => c.boutique_id !== boutiqueId);
+    this.data.audit_logs = this.data.audit_logs.filter((a) => a.boutique_id !== boutiqueId);
+    this.persistSync(this.data);
   }
 }
 
