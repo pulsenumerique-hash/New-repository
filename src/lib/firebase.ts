@@ -12,7 +12,33 @@ import {
   setLogLevel,
   Firestore,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import defaultFirebaseConfig from '../../firebase-applet-config.json';
+
+// Safely resolve Firebase configuration: prioritize VITE_* environment variables (e.g. Netlify settings)
+// and gracefully fall back to the bundled firebase-applet-config.json
+const rawConfig = (defaultFirebaseConfig || {}) as Record<string, string>;
+
+export const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || rawConfig.apiKey || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || rawConfig.authDomain || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || rawConfig.appId || '',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || rawConfig.measurementId || '',
+  firestoreDatabaseId:
+    import.meta.env.VITE_FIRESTORE_DATABASE_ID ||
+    import.meta.env.VITE_FIREBASE_DATABASE_ID ||
+    rawConfig.firestoreDatabaseId ||
+    '',
+  oAuthClientId: import.meta.env.VITE_FIREBASE_OAUTH_CLIENT_ID || rawConfig.oAuthClientId || '',
+};
+
+if (!firebaseConfig.apiKey) {
+  console.warn(
+    'Attention: Clé API Firebase manquante ! Veuillez configurer VITE_FIREBASE_API_KEY dans vos variables d’environnement ou vérifier firebase-applet-config.json.'
+  );
+}
 
 // Silence internal Firestore SDK connection logs/retries to prevent noisy console errors
 setLogLevel('silent');
@@ -90,6 +116,4 @@ try {
 }
 
 export const db = dbInstance;
-
-export { firebaseConfig };
 

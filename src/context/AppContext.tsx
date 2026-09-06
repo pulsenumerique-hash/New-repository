@@ -25,6 +25,7 @@ import { useAuth } from './AuthContext';
 import { api } from '../services/api';
 
 interface AppContextType {
+  boutique: Boutique | null;
   products: Product[];
   sales: Sale[];
   clients: Client[];
@@ -1949,6 +1950,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        boutique,
         products,
         sales,
         clients,

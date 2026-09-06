@@ -19,6 +19,7 @@ import { AuditLogModal } from './components/Audit/AuditLogModal';
 import { MultiDeviceSimulator } from './components/Simulator/MultiDeviceSimulator';
 import { AndroidUSBInstallModal } from './components/PWA/AndroidUSBInstallModal';
 import { AndroidInstallBanner } from './components/PWA/AndroidInstallBanner';
+import { ErrorBoundary } from './components/Common/ErrorBoundary';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, isLoading, user, needsEmailVerification, refreshProfile } = useAuth();
@@ -128,10 +129,12 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <MainLayout />
-      </AppProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppProvider>
+          <MainLayout />
+        </AppProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

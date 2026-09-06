@@ -73,6 +73,7 @@ export interface Sale {
   date: string;
   status: 'completed' | 'cancelled';
   cancellation_reason?: string;
+  cancel_reason?: string;
   cancelled_at?: string;
   cancelled_by_name?: string;
   created_at: string;

@@ -17,7 +17,9 @@
     "jsx": "react-jsx",
     "types": [
       "vite/client",
-      "vite-plugin-pwa/client"
+      "vite-plugin-pwa/client",
+      "react",
+      "react-dom"
     ],
     "paths": {
       "@/*": [
