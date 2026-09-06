@@ -87,6 +87,12 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    // Supplier payments (Paiements fournisseurs & achats)
+    match /supplier_payments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     // Expenses (Charges d'exploitation)
     match /expenses/{expenseId} {
       allow read: if isAuthenticated();

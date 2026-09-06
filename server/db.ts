@@ -739,6 +739,10 @@ class DatabaseService {
     this.data.cash_movements = this.data.cash_movements.filter((m) => m.boutique_id !== boutiqueId);
     this.data.cash_closings = this.data.cash_closings.filter((c) => c.boutique_id !== boutiqueId);
     this.data.audit_logs = this.data.audit_logs.filter((a) => a.boutique_id !== boutiqueId);
+    const btq = this.data.boutiques.find((b) => b.id === boutiqueId);
+    if (btq) {
+      btq.initial_capital = 0;
+    }
     this.persistSync(this.data);
   }
 }

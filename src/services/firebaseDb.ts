@@ -678,35 +678,90 @@ export const firebaseDb = {
   },
 
   // --- RÉINITIALISATION COMPLÈTE DE TOUTES LES DONNÉES MÉTIER ---
-  async resetAllBusinessData(boutiqueId: string): Promise<void> {
-    if (!boutiqueId) return;
+  async resetAllBusinessData(
+    boutiqueId: string,
+    onProgress?: (collectionName: string, deletedCount: number, currentStep: number, totalSteps: number) => void
+  ): Promise<{ totalDeleted: number; collectionCounts: Record<string, number> }> {
+    if (!boutiqueId) return { totalDeleted: 0, collectionCounts: {} };
 
     const collectionsToClear = [
       'products',
       'sales',
-      'clients',
-      'refunds',
-      'cash_movements',
-      'cash_closings',
       'suppliers',
       'supplier_payments',
+      'cash_movements',
+      'cash_closings',
       'expenses',
+      'clients',
+      'refunds',
       'audit_logs',
       'backups',
+      'active_sessions',
     ];
 
-    for (const colName of collectionsToClear) {
+    let totalDeleted = 0;
+    const collectionCounts: Record<string, number> = {};
+    const totalSteps = collectionsToClear.length + 1; // +1 for solde_caisse / initial_capital
+
+    for (let i = 0; i < collectionsToClear.length; i++) {
+      const colName = collectionsToClear[i];
       try {
+        // Query by boutique_id
         const q = query(collection(db, colName), where('boutique_id', '==', boutiqueId));
         const snapshot = await getDocs(q);
-        const deletePromises: Promise<void>[] = [];
-        snapshot.forEach((docSnap) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-        await Promise.all(deletePromises);
+
+        // Also check if any documents were saved with boutiqueId (camelCase)
+        const docMap = new Map<string, typeof snapshot.docs[0]>();
+        snapshot.docs.forEach((d) => docMap.set(d.id, d));
+
+        try {
+          const qCamel = query(collection(db, colName), where('boutiqueId', '==', boutiqueId));
+          const snapCamel = await getDocs(qCamel);
+          snapCamel.docs.forEach((d) => docMap.set(d.id, d));
+        } catch {
+          // ignore if secondary query fails
+        }
+
+        const uniqueDocs = Array.from(docMap.values());
+        const count = uniqueDocs.length;
+        collectionCounts[colName] = count;
+        totalDeleted += count;
+
+        if (count > 0) {
+          // Delete in batches to avoid overwhelming network
+          const chunkSize = 25;
+          for (let c = 0; c < uniqueDocs.length; c += chunkSize) {
+            const chunk = uniqueDocs.slice(c, c + chunkSize);
+            await Promise.all(chunk.map((docSnap) => deleteDoc(docSnap.ref)));
+          }
+        }
+
+        if (onProgress) {
+          onProgress(colName, count, i + 1, totalSteps);
+        }
       } catch (err) {
         console.warn(`Firestore: impossible de vider la collection ${colName}:`, err);
+        collectionCounts[colName] = 0;
+        if (onProgress) {
+          onProgress(colName, 0, i + 1, totalSteps);
+        }
       }
     }
+
+    // Remise à zéro réelle du solde de caisse et capital initial dans la boutique
+    try {
+      await updateDoc(doc(db, 'boutiques', boutiqueId), {
+        initial_capital: 0,
+        updated_at: new Date().toISOString(),
+      });
+      collectionCounts['solde_caisse'] = 0;
+      if (onProgress) {
+        onProgress('solde_caisse', 0, totalSteps, totalSteps);
+      }
+    } catch (err) {
+      console.warn('Firestore: impossible de réinitialiser le capital initial de la boutique:', err);
+    }
+
+    return { totalDeleted, collectionCounts };
   },
 };

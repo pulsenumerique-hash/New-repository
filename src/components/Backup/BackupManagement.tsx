@@ -22,6 +22,30 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../lib/formatters';
 import { ResetAppModal } from '../Common/ResetAppModal';
+import { firebaseDb } from '../../services/firebaseDb';
+
+/**
+ * Fonction utilitaire de purge intégrale de toutes les collections Firestore de la boutique.
+ * Itère sur l'ensemble des collections Firestore :
+ * - produits (products)
+ * - achats & fournisseurs (suppliers, supplier_payments)
+ * - ventes & tickets de caisse (sales)
+ * - caisse & mouvements (cash_movements, cash_closings)
+ * - charges & dépenses (expenses)
+ * - clients & comptes crédits (clients, refunds)
+ * - journaux d'audit & logs (audit_logs)
+ * - sauvegardes (backups)
+ * - sessions (active_sessions)
+ * - solde de caisse actuel (remise à 0 du capital initial dans boutiques/{id})
+ * 
+ * Garantit un état 'zéro' absolu pour toutes les données métier.
+ */
+export async function purgeAllFirestoreCollections(
+  boutiqueId: string,
+  onProgress?: (collectionName: string, count: number, currentStep: number, totalSteps: number) => void
+): Promise<{ totalDeleted: number; collectionCounts: Record<string, number> }> {
+  return firebaseDb.resetAllBusinessData(boutiqueId, onProgress);
+}
 
 export const BackupManagement: React.FC = () => {
   const {
@@ -424,8 +448,8 @@ export const BackupManagement: React.FC = () => {
         </form>
       </div>
 
-      {/* ZONE DE DANGER : RÉINITIALISATION COMPLÈTE DE L'APPLICATION */}
-      <div className="bg-white rounded-3xl border border-rose-200 p-6 shadow-sm overflow-hidden relative">
+      {/* ZONE DE DANGER : RÉINITIALISATION COMPLÈTE & ÉTAT ZÉRO TOTAL */}
+      <div className="bg-white rounded-3xl border-2 border-rose-200 p-6 shadow-sm overflow-hidden relative space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
@@ -433,13 +457,13 @@ export const BackupManagement: React.FC = () => {
             </div>
             <div>
               <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
-                <span>Réinitialisation complète de l'application</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                <span>Réinitialisation intégrale & État 'Zéro' Total</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
                   Zone sensible
                 </span>
               </h3>
               <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                Efface définitivement toutes les données opérationnelles (produits, achats, ventes, caisse, dettes, historique) et remet tous les compteurs à zéro. Votre compte et vos identifiants d'accès restent conservés.
+                Itère sur toutes les collections Firestore (produits, achats, ventes, caisse, logs, solde de caisse actuel etc.) pour les supprimer réellement et garantir un état 'zéro' total. Vos accès administrateurs et paramètres généraux de la boutique restent protégés.
               </p>
             </div>
           </div>
@@ -451,8 +475,36 @@ export const BackupManagement: React.FC = () => {
             className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-2xl shadow-md hover:shadow-lg transition active:scale-95 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Réinitialiser l'application</span>
+            <span>Réinitialiser totalement l'application</span>
           </button>
+        </div>
+
+        {/* Badges de contrôle de l'état zéro */}
+        <div className="pt-2 border-t border-rose-100 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 text-[11px] font-bold text-slate-600">
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>📦 Produits</span>
+            <span className="text-rose-600 font-mono">0</span>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>🚚 Achats</span>
+            <span className="text-rose-600 font-mono">0</span>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>🧾 Ventes</span>
+            <span className="text-rose-600 font-mono">0</span>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>💰 Caisse</span>
+            <span className="text-rose-600 font-mono">0</span>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>💵 Solde</span>
+            <span className="text-rose-600 font-mono">0 FCFA</span>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <span>📋 Logs</span>
+            <span className="text-rose-600 font-mono">0</span>
+          </div>
         </div>
       </div>
 
@@ -461,6 +513,7 @@ export const BackupManagement: React.FC = () => {
         isOpen={isResetModalOpen}
         onClose={() => setIsResetModalOpen(false)}
         onConfirmReset={resetAllBusinessData}
+        boutiqueName={boutique?.name}
       />
     </div>
   );

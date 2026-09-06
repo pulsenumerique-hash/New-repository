@@ -109,7 +109,9 @@ interface AppContextType {
     data_json: string;
   }>>;
   restoreCloudBackup: (backupId: string) => Promise<void>;
-  resetAllBusinessData: () => Promise<void>;
+  resetAllBusinessData: (
+    onProgress?: (collectionName: string, count: number, currentStep: number, totalSteps: number) => void
+  ) => Promise<{ totalDeleted: number; collectionCounts: Record<string, number> }>;
   updateBoutiqueSettings: (settings: Partial<Boutique>) => Promise<void>;
   revokeSession: (sessionId: string) => Promise<void>;
   cashiers: User[];
@@ -147,7 +149,7 @@ const createZeroStats = (): DashboardStats => ({
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, user, boutique, role } = useAuth();
+  const { isAuthenticated, user, boutique, role, updateBoutiqueState } = useAuth();
   const activeBoutiqueIdRef = useRef<string | null>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -1884,12 +1886,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // --- RÉINITIALISATION COMPLÈTE DE TOUTES LES DONNÉES MÉTIER ---
-  const resetAllBusinessData = async (): Promise<void> => {
+  const resetAllBusinessData = async (
+    onProgress?: (collectionName: string, count: number, currentStep: number, totalSteps: number) => void
+  ): Promise<{ totalDeleted: number; collectionCounts: Record<string, number> }> => {
     if (!boutique) throw new Error('Aucune boutique active.');
 
-    // 1. Suppression définitive dans Firebase Firestore de toutes les collections métier
+    // 1. Suppression définitive dans Firebase Firestore de toutes les collections métier + remise à 0 du capital
+    let resetResult: { totalDeleted: number; collectionCounts: Record<string, number> } = {
+      totalDeleted: 0,
+      collectionCounts: {},
+    };
     try {
-      await firebaseDb.resetAllBusinessData(boutique.id);
+      resetResult = await firebaseDb.resetAllBusinessData(boutique.id, onProgress);
     } catch (err) {
       console.warn('Erreur Firestore lors de la réinitialisation:', err);
     }
@@ -1901,7 +1909,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Notice réinitialisation serveur API:', err);
     }
 
-    // 3. Nettoyage complet du cache local et de la file d'attente hors-ligne
+    // 3. Mise à zéro du capital initial et solde de caisse dans l'état local de la boutique
+    updateBoutiqueState({ initial_capital: 0 });
+
+    // 4. Nettoyage complet du cache local et de la file d'attente hors-ligne
     offlineStorage.clearQueue();
     offlineStorage.clearBoutiqueData(boutique.id);
     try {
@@ -1911,7 +1922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem(`draft_sale_${boutique.id}`);
     } catch {}
 
-    // 4. Remise à zéro réelle et immédiate de tous les états métier en mémoire
+    // 5. Remise à zéro réelle et immédiate de tous les états métier en mémoire
     setProducts([]);
     setSales([]);
     setClients([]);
@@ -1921,15 +1932,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSuppliers([]);
     setExpenses([]);
     setAuditLogs([]);
+    setStats(createZeroStats());
     try {
       window.dispatchEvent(new CustomEvent('boutiquepro_cart_clear'));
     } catch {}
 
-    // 5. Journal d'audit pour consigner l'événement
-    createAuditLog('DELETE', 'boutique', 'Réinitialisation complète de toutes les données métier (remise à zéro)');
+    // 6. Journal d'audit pour consigner l'événement
+    createAuditLog('DELETE', 'boutique', 'Réinitialisation complète de toutes les données métier (remise à zéro totale)');
 
-    // 6. Recalcul immédiat des statistiques et compteurs (tous à 0)
+    // 7. Recalcul immédiat des statistiques et compteurs (tous à 0)
     await refreshData();
+
+    return resetResult;
   };
 
   return (

@@ -29,6 +29,7 @@ interface AuthContextType {
   logout: () => void;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
+  updateBoutiqueState: (updates: Partial<Boutique>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -216,6 +217,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearError = () => setError(null);
 
+  const updateBoutiqueState = (updates: Partial<Boutique>) => {
+    setBoutique((prev) => (prev ? { ...prev, ...updates } : null));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -235,6 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         refreshProfile,
         clearError,
+        updateBoutiqueState,
       }}
     >
       {children}
