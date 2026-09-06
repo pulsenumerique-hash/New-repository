@@ -42,6 +42,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    // If hosted statically (e.g. Netlify) and server API is not available
+    throw new Error(`API endpoint unavailable or returned non-JSON (${response.status})`);
+  }
+
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {

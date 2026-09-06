@@ -110,8 +110,14 @@ export const LoginScreen: React.FC = () => {
     try {
       await googleLogin();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur Google';
-      setLocalError(msg);
+      const errStr = err instanceof Error ? err.message : String(err || '');
+      if (errStr.includes('unauthorized-domain')) {
+        setLocalError(
+          `Domaine "${window.location.hostname}" non autorisé dans Firebase Auth pour Google. Ajoutez ce domaine dans la Console Firebase (Authentification > Paramètres > Domaines autorisés), ou connectez-vous directement avec votre e-mail et mot de passe ci-dessous.`
+        );
+      } else {
+        setLocalError(err instanceof Error ? err.message : 'Erreur de connexion Google');
+      }
     } finally {
       setIsSubmitting(false);
     }

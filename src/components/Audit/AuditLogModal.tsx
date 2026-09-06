@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, ShieldCheck, Search, X, CheckCircle2, User } from 'lucide-react';
 import { api } from '../../services/api';
+import { useApp } from '../../context/AppContext';
 import { AuditLog } from '../../types';
 import { formatDate } from '../../lib/formatters';
 
@@ -9,17 +10,28 @@ interface AuditLogModalProps {
 }
 
 export const AuditLogModal: React.FC<AuditLogModalProps> = ({ onClose }) => {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const { auditLogs: contextAuditLogs } = useApp();
+  const [logs, setLogs] = useState<AuditLog[]>(() => contextAuditLogs || []);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     api
       .getAuditLogs()
-      .then((res) => setLogs(res.logs))
-      .catch((err) => console.error('Error fetching audit logs:', err))
+      .then((res) => {
+        if (res && Array.isArray(res.logs) && res.logs.length > 0) {
+          setLogs(res.logs);
+        } else if (contextAuditLogs && contextAuditLogs.length > 0) {
+          setLogs(contextAuditLogs);
+        }
+      })
+      .catch(() => {
+        if (contextAuditLogs && contextAuditLogs.length > 0) {
+          setLogs(contextAuditLogs);
+        }
+      })
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [contextAuditLogs]);
 
   const filteredLogs = logs.filter(
     (l) =>

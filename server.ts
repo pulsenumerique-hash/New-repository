@@ -1199,11 +1199,19 @@ app.post('/api/boutique/reset', authMiddleware, requireAdmin, (req: AuthRequest,
 // --- CLIENT-SIDE APPLICATION OR VITE MIDDLEWARE ---
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
+    // Remove tsx ambient __dirname so vite-plugin-pwa uses import.meta.url correctly
+    // @ts-ignore
+    delete (globalThis as Record<string, unknown>).__dirname;
+
+    if (process.env.DISABLE_HMR === undefined) {
+      process.env.DISABLE_HMR = 'true';
+    }
+
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: isHmrDisabled ? false : { server, overlay: false },
+        hmr: false,
+        ws: false,
       },
       appType: 'spa',
     });
