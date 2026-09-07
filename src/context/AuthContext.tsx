@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, Boutique } from '../types';
-import { firebaseAuthService } from '../services/firebaseAuth';
+import { firebaseAuthService, getCachedAuthProfile } from '../services/firebaseAuth';
 import { realtimeClient } from '../services/realtime';
 import { api, setStoredToken } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
@@ -22,10 +22,13 @@ interface AuthContextType {
     password: string;
     password_confirm: string;
   }) => Promise<void>;
-  googleLogin: () => Promise<void>;
+  googleLogin: (forceRedirect?: boolean) => Promise<void>;
   checkEmailVerification: () => Promise<boolean>;
   resendVerificationEmail: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
+  requestPasswordResetCode: (email: string) => Promise<{ code: string; expiresAt: string; resetId: string }>;
+  verifyPasswordResetCode: (email: string, code: string) => Promise<{ valid: boolean; resetId?: string; oobCode?: string; error?: string }>;
+  completePasswordReset: (params: { email: string; code: string; newPassword: string; resetId?: string; oobCode?: string }) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
@@ -35,16 +38,70 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [boutique, setBoutique] = useState<Boutique | null>(null);
+  // Synchronous cached session recovery to eliminate blank loading screens
+  const initialData = (() => {
+    try {
+      const lastUid = typeof localStorage !== 'undefined' ? localStorage.getItem('boutiquepro_last_auth_uid') : null;
+      if (lastUid) {
+        const cached = getCachedAuthProfile(lastUid);
+        if (cached.user) {
+          return {
+            user: cached.user,
+            boutique: cached.boutique,
+          };
+        }
+      }
+    } catch {
+      // Ignore storage restrictions
+    }
+    return { user: null, boutique: null };
+  })();
+
+  const [user, setUser] = useState<User | null>(initialData.user);
+  const [boutique, setBoutique] = useState<Boutique | null>(initialData.boutique);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // Only start in loading state if awaiting a Google redirect return or waiting initial sync
+  const isAwaitingRedirect =
+    typeof window !== 'undefined' && sessionStorage.getItem('bp_google_redirect_pending') === 'true';
+  const [isLoading, setIsLoading] = useState<boolean>(isAwaitingRedirect);
   const [error, setError] = useState<string | null>(null);
 
-  // Subscribe to real Firebase Auth State changes
+  // Subscribe to real Firebase Auth State changes and process redirect return
   useEffect(() => {
+    // 1. Process Google signInWithRedirect credential if user is returning from Google
+    firebaseAuthService
+      .checkGoogleRedirectResult()
+      .then((res) => {
+        if (res) {
+          setUser(res.user);
+          setBoutique(res.boutique);
+          setNeedsEmailVerification(false);
+          realtimeClient.connect();
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect auth result error:', err);
+        const msg = err instanceof Error ? err.message : String(err || '');
+        if (msg.includes('unauthorized-domain')) {
+          setError(
+            `Le domaine "${window.location.hostname}" n'est pas encore autorisé dans Firebase Auth. Veuillez l'ajouter dans la Console Firebase (Authentification > Paramètres > Domaines autorisés).`
+          );
+        } else {
+          setError(msg);
+        }
+        setIsLoading(false);
+      });
+
+    // 2. Safety timeout guard: do not block the UI for more than 1.2s under any network condition
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1200);
+
+    // 3. Official Firebase Auth listener
     const unsubscribe = firebaseAuthService.onAuthStateChange(
       ({ user: authUser, boutique: authBtq, needsEmailVerification: unverified, isAuthLoading }) => {
+        clearTimeout(safetyTimer);
         setUser(authUser);
         setBoutique(authBtq);
         setNeedsEmailVerification(unverified);
@@ -73,7 +130,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -167,25 +227,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const googleLogin = async () => {
+  const googleLogin = async (forceRedirect = false) => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await firebaseAuthService.loginWithGoogle();
-      setUser(res.user);
-      setBoutique(res.boutique);
-      setNeedsEmailVerification(false);
-      realtimeClient.connect();
+      const res = await firebaseAuthService.loginWithGoogle(forceRedirect);
+      if (res) {
+        setUser(res.user);
+        setBoutique(res.boutique);
+        setNeedsEmailVerification(false);
+        realtimeClient.connect();
+        setIsLoading(false);
+      } else {
+        // Redirection plein écran déclenchée via signInWithRedirect
+        // On maintient l'état de chargement pendant la navigation du navigateur vers Google
+      }
     } catch (err: unknown) {
+      setIsLoading(false);
       const msg = err instanceof Error ? err.message : 'Échec de la connexion Google';
       if (msg.includes('auth/popup-closed-by-user')) {
-        setError('Fenêtre de connexion Google fermée.');
+        setError('Fenêtre de connexion Google fermée par l’utilisateur.');
+      } else if (msg.includes('auth/unauthorized-domain')) {
+        setError(
+          `Le domaine actuel "${window.location.hostname}" n'est pas encore autorisé dans Firebase Console (Authentification > Paramètres > Domaines autorisés). Ajoutez-le ou connectez-vous par e-mail ci-dessous.`
+        );
       } else {
         setError(msg);
       }
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -203,6 +272,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const forgotPassword = async (email: string) => {
     await firebaseAuthService.sendPasswordReset(email);
+  };
+
+  const requestPasswordResetCode = async (email: string) => {
+    setError(null);
+    try {
+      return await firebaseAuthService.requestPasswordResetCode(email);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de l’envoi du code';
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const verifyPasswordResetCode = async (email: string, code: string) => {
+    setError(null);
+    return await firebaseAuthService.verifyPasswordResetCode(email, code);
+  };
+
+  const completePasswordReset = async (params: {
+    email: string;
+    code: string;
+    newPassword: string;
+    resetId?: string;
+    oobCode?: string;
+  }) => {
+    setError(null);
+    try {
+      await firebaseAuthService.completePasswordReset(params);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la réinitialisation';
+      setError(msg);
+      throw new Error(msg);
+    }
   };
 
   const logout = () => {
@@ -237,6 +339,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         checkEmailVerification,
         resendVerificationEmail,
         forgotPassword,
+        requestPasswordResetCode,
+        verifyPasswordResetCode,
+        completePasswordReset,
         logout,
         refreshProfile,
         clearError,

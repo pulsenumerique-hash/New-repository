@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Store,
   Mail,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AndroidUSBInstallModal } from '../PWA/AndroidUSBInstallModal';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 export const LoginScreen: React.FC = () => {
   const { login, register, googleLogin, forgotPassword, error, clearError } = useAuth();
@@ -40,9 +41,16 @@ export const LoginScreen: React.FC = () => {
 
   // Forgot password modal
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotSuccessMessage, setForgotSuccessMessage] = useState<string | null>(null);
-  const [isSendingReset, setIsSendingReset] = useState(false);
+
+  // Détection automatique si l'utilisateur arrive depuis un e-mail de réinitialisation
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('code') || params.get('oobCode') || params.get('mode') === 'resetPassword') {
+        setShowForgotPassword(true);
+      }
+    }
+  }, []);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,42 +111,39 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleGoogleAuth = async () => {
+  const [redirectingGoogle, setRedirectingGoogle] = useState(false);
+
+  const handleGoogleAuth = async (forceRedirect = false) => {
     setLocalError(null);
     clearError();
     setIsSubmitting(true);
+    if (forceRedirect) {
+      setRedirectingGoogle(true);
+    }
     try {
-      await googleLogin();
+      await googleLogin(forceRedirect);
     } catch (err: unknown) {
       const errStr = err instanceof Error ? err.message : String(err || '');
       if (errStr.includes('unauthorized-domain')) {
         setLocalError(
           `Domaine "${window.location.hostname}" non autorisé dans Firebase Auth pour Google. Ajoutez ce domaine dans la Console Firebase (Authentification > Paramètres > Domaines autorisés), ou connectez-vous directement avec votre e-mail et mot de passe ci-dessous.`
         );
+        setRedirectingGoogle(false);
+      } else if (errStr.includes('popup-blocked')) {
+        setLocalError('Votre navigateur a bloqué la fenêtre popup. Redirection directe vers Google...');
+        setRedirectingGoogle(true);
+        try {
+          await googleLogin(true);
+        } catch {
+          setLocalError('Redirection impossible. Veuillez utiliser la connexion avec e-mail et mot de passe ci-dessous.');
+          setRedirectingGoogle(false);
+        }
       } else {
         setLocalError(err instanceof Error ? err.message : 'Erreur de connexion Google');
+        setRedirectingGoogle(false);
       }
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleSendResetPassword = async () => {
-    if (!forgotEmail || !forgotEmail.includes('@')) {
-      setLocalError('Veuillez entrer une adresse e-mail valide.');
-      return;
-    }
-    setIsSendingReset(true);
-    try {
-      await forgotPassword(forgotEmail);
-      setForgotSuccessMessage(
-        `Un e-mail de réinitialisation sécurisé a été envoyé à ${forgotEmail}. Veuillez vérifier votre boîte de réception.`
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur lors de l’envoi';
-      setLocalError(msg);
-    } finally {
-      setIsSendingReset(false);
     }
   };
 
@@ -248,29 +253,46 @@ export const LoginScreen: React.FC = () => {
             id="btn-google-login"
             type="button"
             disabled={isSubmitting}
-            onClick={handleGoogleAuth}
+            onClick={() => handleGoogleAuth(false)}
             className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-200 rounded-2xl shadow-2xs bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition active:scale-[0.99] cursor-pointer"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>Continuer avec Google</span>
+            {redirectingGoogle ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            )}
+            <span>{redirectingGoogle ? 'Redirection Google en cours...' : 'Continuer avec Google'}</span>
           </button>
+
+          {/* Fallback button if popup is blocked by mobile or browser settings */}
+          <div className="mt-2 text-center">
+            <button
+              id="btn-google-redirect-direct"
+              type="button"
+              disabled={isSubmitting}
+              onClick={() => handleGoogleAuth(true)}
+              className="text-[11px] text-indigo-600 hover:text-indigo-800 underline underline-offset-2 font-medium cursor-pointer transition"
+            >
+              Pop-up bloquée ? Connexion Google directe (pleine page)
+            </button>
+          </div>
 
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
@@ -506,55 +528,17 @@ export const LoginScreen: React.FC = () => {
       {/* Android USB & APK Install Modal on Login */}
       {showPwaModal && <AndroidUSBInstallModal onClose={() => setShowPwaModal(false)} />}
 
-      {/* Forgot Password Modal */}
+      {/* 8-Digit Password Reset Modal */}
       {showForgotPassword && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100">
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-indigo-600" />
-              <span>Réinitialisation du mot de passe</span>
-            </h3>
-            <p className="mt-2 text-xs text-slate-600">
-              Saisissez votre adresse e-mail pour recevoir un lien officiel Firebase de réinitialisation de mot de passe.
-            </p>
-
-            {forgotSuccessMessage ? (
-              <div className="mt-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{forgotSuccessMessage}</span>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <input
-                  type="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="votre-email@boutique.com"
-                  className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
-                />
-                <button
-                  type="button"
-                  disabled={isSendingReset}
-                  onClick={handleSendResetPassword}
-                  className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer disabled:opacity-70"
-                >
-                  {isSendingReset ? 'Envoi en cours...' : 'Envoyer le lien de réinitialisation'}
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowForgotPassword(false);
-                setForgotSuccessMessage(null);
-              }}
-              className="mt-4 w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
+        <ForgotPasswordModal
+          initialEmail={loginEmail}
+          onClose={() => setShowForgotPassword(false)}
+          onSuccessLogin={(email) => {
+            setLoginEmail(email);
+            setMode('login');
+            setShowForgotPassword(false);
+          }}
+        />
       )}
     </div>
   );

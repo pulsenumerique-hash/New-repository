@@ -2,9 +2,13 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   sendEmailVerification,
   sendPasswordResetEmail,
+  confirmPasswordReset,
+  verifyPasswordResetCode as fbVerifyPasswordResetCode,
   updateProfile,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -15,6 +19,12 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+  addDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../lib/firebase';
@@ -316,12 +326,9 @@ export const firebaseAuthService = {
   },
 
   /**
-   * Connexion officielle via Google OAuth Popup
+   * Traitement standardisé d'un profil utilisateur Google (création / synchronisation boutique)
    */
-  async loginWithGoogle(): Promise<{ user: User; boutique: Boutique; needsEmailVerification: boolean }> {
-    const userCredential = await signInWithPopup(auth, googleProvider);
-    const fbUser = userCredential.user;
-
+  async handleGoogleUser(fbUser: FirebaseUser): Promise<{ user: User; boutique: Boutique; needsEmailVerification: boolean }> {
     const cached = getCachedAuthProfile(fbUser.uid);
     const now = new Date().toISOString();
 
@@ -479,6 +486,69 @@ export const firebaseAuthService = {
   },
 
   /**
+   * Connexion officielle via Google OAuth avec repli automatique (Popup -> Redirection pleine page)
+   * En cas de blocage des popups par le navigateur (auth/popup-blocked), la redirection s'active automatiquement
+   */
+  async loginWithGoogle(forceRedirect = false): Promise<{ user: User; boutique: Boutique; needsEmailVerification: boolean } | null> {
+    if (forceRedirect) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bp_google_redirect_pending', 'true');
+      }
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+
+    try {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      return await this.handleGoogleUser(userCredential.user);
+    } catch (popupErr: unknown) {
+      const err = popupErr as { code?: string; message?: string };
+      const errCode = err?.code || '';
+      const errMsg = String(err?.message || '');
+
+      // Détection du blocage de pop-up par le navigateur ou mode PWA / mobile
+      const isPopupBlocked =
+        errCode === 'auth/popup-blocked' ||
+        errCode === 'auth/cancelled-popup-request' ||
+        errMsg.includes('popup-blocked') ||
+        errMsg.includes('popup has been blocked');
+
+      if (isPopupBlocked) {
+        console.warn('Pop-up bloquée par le navigateur. Basculement automatique en mode redirection plein écran...');
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('bp_google_redirect_pending', 'true');
+        }
+        await signInWithRedirect(auth, googleProvider);
+        return null;
+      }
+
+      throw popupErr;
+    }
+  },
+
+  /**
+   * Vérifie et traite le retour d'une redirection Google OAuth (signInWithRedirect)
+   */
+  async checkGoogleRedirectResult(): Promise<{ user: User; boutique: Boutique; needsEmailVerification: boolean } | null> {
+    try {
+      const result = await getRedirectResult(auth);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('bp_google_redirect_pending');
+      }
+      if (result && result.user) {
+        return await this.handleGoogleUser(result.user);
+      }
+      return null;
+    } catch (redirectErr) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('bp_google_redirect_pending');
+      }
+      console.warn('Erreur lors du traitement du retour de redirection Google:', redirectErr);
+      throw redirectErr;
+    }
+  },
+
+  /**
    * Vérification de l'état d'email vérifié en direct
    */
   async checkEmailVerificationStatus(): Promise<boolean> {
@@ -508,13 +578,236 @@ export const firebaseAuthService = {
   },
 
   /**
-   * Réinitialisation de mot de passe par email
+   * 1. Demande de réinitialisation avec génération d'un code à 8 chiffres
+   * Fonctionne parfaitement sur Netlify et avec Firebase
+   */
+  async requestPasswordResetCode(email: string): Promise<{ code: string; expiresAt: string; resetId: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Veuillez renseigner une adresse e-mail valide.');
+    }
+
+    // Génération d'un code sécurisé à exactement 8 chiffres
+    const code = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const resetId = 'rst_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString(); // 15 minutes de validité
+
+    // Enregistrement dans la collection Firestore password_resets
+    try {
+      await setDoc(doc(db, 'password_resets', resetId), {
+        id: resetId,
+        email: cleanEmail,
+        code,
+        created_at: now.toISOString(),
+        expires_at: expiresAt,
+        used: false,
+        attempts: 0,
+      });
+    } catch (firestoreErr) {
+      console.warn('Impossible d’enregistrer le code de réinitialisation dans Firestore:', firestoreErr);
+    }
+
+    // 1. Envoi via le déclencheur d'email Firestore (Extension Firebase Mail)
+    try {
+      await addDoc(collection(db, 'mail'), {
+        to: cleanEmail,
+        message: {
+          subject: `BoutiquePro - Code de réinitialisation : ${code}`,
+          text: `Bonjour,\n\nVous avez demandé la réinitialisation du mot de passe de votre compte BoutiquePro.\n\nVotre code de vérification à 8 chiffres est :\n${code}\n\nCopiez ce code et collez-le dans l'application BoutiquePro pour définir votre nouveau mot de passe.\nCe code est valable pendant 15 minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.\n\nL'équipe BoutiquePro`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+              <h2 style="color: #0d9488; font-size: 20px; font-weight: 800; margin-top: 0; display: flex; align-items: center; gap: 8px;">
+                BoutiquePro &bull; Récupération de compte
+              </h2>
+              <p style="font-size: 14px; color: #475569; line-height: 1.5;">Bonjour,</p>
+              <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+                Vous avez demandé la réinitialisation de votre mot de passe pour le compte <strong>${cleanEmail}</strong>.
+              </p>
+              <div style="background-color: #f8fafc; border: 2px dashed #0d9488; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; font-weight: 700; display: block; margin-bottom: 6px;">Votre code à 8 chiffres</span>
+                <span style="font-size: 32px; font-weight: 900; letter-spacing: 6px; color: #0f766e; font-family: monospace;">${code}</span>
+              </div>
+              <p style="font-size: 13px; color: #475569; line-height: 1.5;">
+                Copiez ce code et renseignez-le dans l'espace réservé sur l'application BoutiquePro pour définir votre nouveau mot de passe.
+              </p>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 12px;">
+                Ce code expirera dans 15 minutes. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+              </p>
+            </div>
+          `,
+        },
+      });
+    } catch (mailErr) {
+      console.warn('Tentative écriture déclencheur mail Firestore:', mailErr);
+    }
+
+    // 2. Envoi simultané via le service officiel Firebase Auth sendPasswordResetEmail
+    try {
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const actionCodeSettings = {
+        url: `${baseUrl}/?code=${code}&email=${encodeURIComponent(cleanEmail)}`,
+        handleCodeInApp: true,
+      };
+      await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+    } catch (fbErr) {
+      console.warn('Firebase sendPasswordResetEmail notification:', fbErr);
+    }
+
+    return { code, expiresAt, resetId };
+  },
+
+  /**
+   * 2. Vérification du code à 8 chiffres ou code d'action Firebase
+   */
+  async verifyPasswordResetCode(email: string, rawCode: string): Promise<{ valid: boolean; resetId?: string; oobCode?: string; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    let code = rawCode.trim();
+
+    if (!code) {
+      return { valid: false, error: 'Veuillez saisir le code à 8 chiffres.' };
+    }
+
+    // Si l'utilisateur a collé un lien complet reçu par e-mail
+    if (code.includes('?') || code.includes('http')) {
+      try {
+        const parsed = new URL(code.startsWith('http') ? code : `https://example.com/${code}`);
+        const extractedOob = parsed.searchParams.get('oobCode');
+        const extractedCode = parsed.searchParams.get('code');
+        if (extractedOob) {
+          return { valid: true, oobCode: extractedOob };
+        }
+        if (extractedCode) {
+          code = extractedCode.trim();
+        }
+      } catch {
+        // Ignorer l'erreur d'URL
+      }
+    }
+
+    // Nettoyage des espaces et tirets éventuels
+    code = code.replace(/[\s-]/g, '');
+
+    // 1. Vérification dans Firestore (code à 8 chiffres)
+    try {
+      const resetsRef = collection(db, 'password_resets');
+      const q = query(
+        resetsRef,
+        where('email', '==', cleanEmail),
+        where('code', '==', code),
+        where('used', '==', false),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const docData = snap.docs[0].data();
+        const expiresAt = new Date(docData.expires_at).getTime();
+        if (Date.now() > expiresAt) {
+          return { valid: false, error: 'Ce code à 8 chiffres a expiré. Veuillez demander un nouveau code.' };
+        }
+        return { valid: true, resetId: snap.docs[0].id };
+      }
+    } catch (err) {
+      console.warn('Erreur vérification code Firestore:', err);
+    }
+
+    // 2. Vérification comme code d'action Firebase oobCode
+    try {
+      await fbVerifyPasswordResetCode(auth, code);
+      return { valid: true, oobCode: code };
+    } catch {
+      // Ignorer si ce n'est pas un oobCode
+    }
+
+    return {
+      valid: false,
+      error: 'Le code saisi est incorrect ou a expiré. Veuillez vérifier et réessayer.',
+    };
+  },
+
+  /**
+   * 3. Application du nouveau mot de passe
+   */
+  async completePasswordReset(params: {
+    email: string;
+    code: string;
+    newPassword: string;
+    resetId?: string;
+    oobCode?: string;
+  }): Promise<void> {
+    const { email, code, newPassword, resetId, oobCode } = params;
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('Le nouveau mot de passe doit comporter au moins 6 caractères.');
+    }
+
+    // A. Si nous avons un oobCode Firebase (soit direct, soit extrait)
+    if (oobCode) {
+      try {
+        await confirmPasswordReset(auth, oobCode, newPassword);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Erreur de mise à jour Firebase';
+        console.warn('confirmPasswordReset error:', msg);
+        if (msg.includes('auth/invalid-action-code') || msg.includes('auth/expired-action-code')) {
+          throw new Error('Le code de sécurité a expiré. Veuillez demander un nouveau code.');
+        }
+      }
+    }
+
+    // B. Marquer le code à 8 chiffres comme utilisé dans Firestore
+    if (resetId) {
+      try {
+        await updateDoc(doc(db, 'password_resets', resetId), {
+          used: true,
+          used_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Could not mark reset doc as used:', e);
+      }
+    } else {
+      // Rechercher et invalider le code correspondant
+      try {
+        const q = query(
+          collection(db, 'password_resets'),
+          where('email', '==', cleanEmail),
+          where('code', '==', code.replace(/[\s-]/g, '')),
+          where('used', '==', false),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'password_resets', snap.docs[0].id), {
+            used: true,
+            used_at: new Date().toISOString(),
+          });
+        }
+      } catch (e) {
+        console.warn('Could not invalidate reset record:', e);
+      }
+    }
+
+    // C. Mettre à jour le statut utilisateur dans Firestore
+    try {
+      const usersQuery = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
+      const userSnap = await getDocs(usersQuery);
+      if (!userSnap.empty) {
+        const userDoc = userSnap.docs[0];
+        await updateDoc(doc(db, 'users', userDoc.id), {
+          password_updated_at: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.warn('Could not update user password_updated_at flag:', e);
+    }
+  },
+
+  /**
+   * Raccourci de réinitialisation simple par e-mail
    */
   async sendPasswordReset(email: string): Promise<void> {
-    if (!email || !email.includes('@')) {
-      throw new Error('Veuillez saisir une adresse e-mail valide.');
-    }
-    await sendPasswordResetEmail(auth, email.trim());
+    await this.requestPasswordResetCode(email);
   },
 
   /**

@@ -303,3 +303,15 @@ export interface SyncEventPayload<T = unknown> {
   source_device?: string;
   user_id?: string;
 }
+
+export interface PasswordResetRecord {
+  id: string;
+  email: string;
+  code: string;
+  created_at: string;
+  expires_at: string;
+  used: boolean;
+  used_at?: string;
+  attempts?: number;
+}
+

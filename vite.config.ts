@@ -22,7 +22,69 @@ export default defineConfig(() => {
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
         ],
-        manifest: false,
+        manifest: {
+          id: '/',
+          name: 'BoutiquePro — Gestion de Boutique Alimentaire',
+          short_name: 'BoutiquePro',
+          description:
+            'Application Android & PWA de gestion de boutique alimentaire : ventes cash/crédit, stock gros/détail, caisse, crédits clients et synchronisation multi-appareils.',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          orientation: 'portrait-primary',
+          background_color: '#090d16',
+          theme_color: '#0f766e',
+          categories: ['business', 'finance', 'productivity', 'shopping'],
+          icons: [
+            {
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: '/pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+            {
+              src: '/icon.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any',
+            },
+          ],
+          shortcuts: [
+            {
+              name: 'Nouvelle Vente Caisse',
+              short_name: 'Caisse',
+              description: "Accès direct à l'encaissement et au terminal de caisse",
+              url: '/?tab=sales',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+            {
+              name: 'Stock & Produits',
+              short_name: 'Stock',
+              description: 'Consulter les niveaux de stocks et alertes',
+              url: '/?tab=products',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+            {
+              name: 'Crédits Clients (Dettes)',
+              short_name: 'Carnet Dettes',
+              description: 'Consulter le carnet de crédit et encaisser un règlement',
+              url: '/?tab=credits',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+          ],
+        },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
@@ -38,6 +100,7 @@ export default defineConfig(() => {
       }),
     ],
     build: {
+      manifest: true,
       chunkSizeWarningLimit: 1500,
       rollupOptions: {
         output: {

@@ -184,6 +184,19 @@
         "created_by": "string",
         "created_at": "string"
       }
+    },
+    "PasswordReset": {
+      "collection": "password_resets",
+      "fields": {
+        "id": "string",
+        "email": "string",
+        "code": "string",
+        "expires_at": "string",
+        "created_at": "string",
+        "used": "boolean",
+        "user_id": "string",
+        "attempts": "number"
+      }
     }
   }
 }

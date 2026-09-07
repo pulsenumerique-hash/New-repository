@@ -110,5 +110,18 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthenticated();
     }
+
+    // Password resets (Code de réinitialisation à 8 chiffres & validation)
+    match /password_resets/{resetId} {
+      allow create: if true;
+      allow read, update: if true;
+      allow delete: if isAuthenticated();
+    }
+
+    // Trigger Email collection (pour extension Firebase Mail / Netlify)
+    match /mail/{mailId} {
+      allow create: if true;
+      allow read, write: if isAuthenticated();
+    }
   }
 }

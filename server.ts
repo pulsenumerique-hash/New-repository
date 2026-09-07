@@ -404,25 +404,56 @@ app.get('/api/auth/me', authMiddleware, (req: AuthRequest, res) => {
   });
 });
 
-// 5. Mot de passe oublié (Lien de réinitialisation sécurisé)
+// 5. Mot de passe oublié (Code de réinitialisation sécurisé à 8 chiffres)
+const serverResetCodes = new Map<string, { code: string; email: string; expiresAt: number }>();
+
 app.post('/api/auth/forgot-password', (req, res) => {
   const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Adresse e-mail requise.' });
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Adresse e-mail valide requise.' });
   }
-  const user = db.findUserByEmail(email.trim());
-  if (!user) {
-    // Return friendly generic response for security
-    return res.json({
-      message: 'Si cette adresse existe, un lien temporaire de réinitialisation lui a été envoyé.',
-    });
-  }
-  // In development, return simulated reset token
-  const resetToken = 'rst_' + Math.random().toString(36).substring(2, 10);
+  const cleanEmail = email.trim().toLowerCase();
+  // Génération d'un code sécurisé à 8 chiffres
+  const code = Math.floor(10000000 + Math.random() * 90000000).toString();
+  const expiresAt = Date.now() + 15 * 60 * 1000;
+  serverResetCodes.set(cleanEmail, { code, email: cleanEmail, expiresAt });
+
   res.json({
-    message: 'Un e-mail de réinitialisation sécurisé a été généré avec succès.',
-    simulation_link: `/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`,
+    message: `Un code à 8 chiffres a été généré pour ${cleanEmail}.`,
+    code,
+    expires_in_minutes: 15,
   });
+});
+
+app.post('/api/auth/verify-reset-code', (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ valid: false, error: 'Email et code requis.' });
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanCode = String(code).trim().replace(/[\s-]/g, '');
+  const record = serverResetCodes.get(cleanEmail);
+
+  if (!record || record.code !== cleanCode || Date.now() > record.expiresAt) {
+    return res.status(400).json({ valid: false, error: 'Code incorrect ou expiré.' });
+  }
+  res.json({ valid: true });
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Paramètres invalides (mot de passe d’au moins 6 caractères).' });
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanCode = String(code).trim().replace(/[\s-]/g, '');
+  const record = serverResetCodes.get(cleanEmail);
+
+  if (!record || record.code !== cleanCode || Date.now() > record.expiresAt) {
+    return res.status(400).json({ error: 'Code de sécurité invalide ou expiré.' });
+  }
+  serverResetCodes.delete(cleanEmail);
+  res.json({ message: 'Mot de passe mis à jour avec succès.' });
 });
 
 // 6. Gestion des sessions actives
