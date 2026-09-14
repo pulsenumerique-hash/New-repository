@@ -25,12 +25,19 @@ import {
   Command,
   Zap,
   Send,
+  Boxes,
+  Tag,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Product, Sale, Client } from '../../types';
 import { formatCurrency, formatDate } from '../../lib/formatters';
 import { SalesHistoryModal } from './SalesHistoryModal';
+import {
+  isPackProduct,
+  getItemsPerPack,
+  getProductStockBreakdown,
+} from '../../lib/packaging';
 
 interface CartItem {
   product: Product;
@@ -284,6 +291,8 @@ export const POSScreen: React.FC = () => {
         product_name: item.product.name,
         quantity: item.quantity,
         unit_price: item.product.unit_sale_price,
+        packaging_type: item.product.packaging_type,
+        items_per_pack: item.product.items_per_pack,
       }));
 
       const sale = await createSale({
@@ -614,9 +623,17 @@ export const POSScreen: React.FC = () => {
                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug line-clamp-2">
                       {product.name}
                     </h4>
-                    <div className="text-[11px] text-slate-500 mt-1">
-                      {product.package_type} ({product.units_per_package} pcs)
-                    </div>
+                    {isPackProduct(product) ? (
+                      <div className="text-[11px] font-semibold text-indigo-700 mt-1 flex items-center gap-1">
+                        <Boxes className="w-3 h-3 text-indigo-500 shrink-0" />
+                        <span>Paquet ({getItemsPerPack(product)} art.)</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-medium text-slate-500 mt-1 flex items-center gap-1">
+                        <Tag className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span>Article à l'unité</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-end justify-between">
@@ -639,8 +656,11 @@ export const POSScreen: React.FC = () => {
                               ? 'text-amber-800 bg-amber-50 border-amber-200'
                               : 'text-emerald-800 bg-emerald-50 border-emerald-200'
                           }`}
+                          title={`Stock total : ${product.unit_stock} articles`}
                         >
-                          Stock : {product.unit_stock}
+                          {isPackProduct(product)
+                            ? getProductStockBreakdown(product).formattedShort
+                            : `${product.unit_stock} art.`}
                         </span>
                       )}
                     </div>
@@ -700,8 +720,13 @@ export const POSScreen: React.FC = () => {
                     <h5 className="font-bold text-slate-800 text-xs truncate">
                       {item.product.name}
                     </h5>
-                    <div className="text-[11px] text-slate-500">
-                      {formatCurrency(item.product.unit_sale_price)} / unité
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                      <span>{formatCurrency(item.product.unit_sale_price)} / article</span>
+                      {isPackProduct(item.product) && (
+                        <span className="text-[10px] text-indigo-700 font-semibold">
+                          ({getItemsPerPack(item.product)}/pqt)
+                        </span>
+                      )}
                     </div>
                   </div>
 

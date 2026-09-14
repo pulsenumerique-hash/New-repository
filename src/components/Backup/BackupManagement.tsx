@@ -17,11 +17,17 @@ import {
   FileText,
   KeyRound,
   RotateCcw,
+  Sparkles,
+  Globe,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../lib/formatters';
 import { ResetAppModal } from '../Common/ResetAppModal';
+import { BrandKitModal } from '../Common/BrandKitModal';
+import { PrivacyPolicyModal } from '../Common/PrivacyPolicyModal';
+import { TermsModal } from '../Common/TermsModal';
+import { GoogleAuthDomainsModal } from '../Common/GoogleAuthDomainsModal';
 import { firebaseDb } from '../../services/firebaseDb';
 
 /**
@@ -83,6 +89,10 @@ export const BackupManagement: React.FC = () => {
   const [newPin, setNewPin] = useState(lockPin || '1234');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isBrandKitOpen, setIsBrandKitOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
 
   const fetchCloudBackups = async () => {
     setIsLoadingBackups(true);
@@ -448,6 +458,106 @@ export const BackupManagement: React.FC = () => {
         </form>
       </div>
 
+      {/* IDENTITÉ VISUELLE & BRAND KIT */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+              <Store className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-base text-slate-900">Identité Visuelle & Charte Graphique</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                  Kit de Marque
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Consultez les codes couleurs officiels (HEX/Tailwind), téléchargez le logo vectoriel SVG et visualisez la charte.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="btn-open-brand-kit"
+            type="button"
+            onClick={() => setIsBrandKitOpen(true)}
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Ouvrir la Charte & Télécharger les Assets</span>
+          </button>
+        </div>
+      </div>
+
+      {/* CADRE JURIDIQUE : CONDITIONS D'UTILISATION & POLITIQUE DE CONFIDENTIALITÉ */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-extrabold text-base text-slate-900">Cadre Juridique & Protection des Données</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                  Fadir • 7 Septembre 2026
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+                Consultez les Conditions d'Utilisation (22 articles) et la Politique de Confidentialité (18 articles) régissant BoutiquePro et assurant la conformité avec Google OAuth et la protection des données.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
+            <button
+              id="btn-open-google-domains-backup"
+              type="button"
+              onClick={() => setIsGoogleModalOpen(true)}
+              className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-extrabold text-xs rounded-xl border border-indigo-200 transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Globe className="w-4 h-4 text-indigo-600" />
+              <span>Domaines Google Auth</span>
+            </button>
+
+            <button
+              id="btn-open-terms-modal"
+              type="button"
+              onClick={() => setIsTermsOpen(true)}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="w-4 h-4 text-slate-600" />
+              <span>Conditions d'Utilisation</span>
+            </button>
+
+            <button
+              id="btn-open-privacy-policy"
+              type="button"
+              onClick={() => setIsPrivacyOpen(true)}
+              className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Confidentialité</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Liens web directs */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500">
+          <div>Éditeur : <strong>Fadir</strong> • Contact : <a href="mailto:pulsenumerique@gmail.com" className="text-teal-700 font-bold hover:underline">pulsenumerique@gmail.com</a></div>
+          <div className="flex items-center gap-3">
+            <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-teal-700 underline font-semibold">
+              Page Web Conditions
+            </a>
+            <span>•</span>
+            <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-teal-700 underline font-semibold">
+              Page Web Confidentialité
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* ZONE DE DANGER : RÉINITIALISATION COMPLÈTE & ÉTAT ZÉRO TOTAL */}
       <div className="bg-white rounded-3xl border-2 border-rose-200 p-6 shadow-sm overflow-hidden relative space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -514,6 +624,30 @@ export const BackupManagement: React.FC = () => {
         onClose={() => setIsResetModalOpen(false)}
         onConfirmReset={resetAllBusinessData}
         boutiqueName={boutique?.name}
+      />
+
+      {/* MODAL BRAND KIT */}
+      <BrandKitModal
+        isOpen={isBrandKitOpen}
+        onClose={() => setIsBrandKitOpen(false)}
+      />
+
+      {/* MODAL CONFIGURATION DOMAINES GOOGLE AUTH */}
+      <GoogleAuthDomainsModal
+        isOpen={isGoogleModalOpen}
+        onClose={() => setIsGoogleModalOpen(false)}
+      />
+
+      {/* MODAL CONDITIONS D'UTILISATION */}
+      <TermsModal
+        isOpen={isTermsOpen}
+        onClose={() => setIsTermsOpen(false)}
+      />
+
+      {/* MODAL POLITIQUE DE CONFIDENTIALITÉ */}
+      <PrivacyPolicyModal
+        isOpen={isPrivacyOpen}
+        onClose={() => setIsPrivacyOpen(false)}
       />
     </div>
   );

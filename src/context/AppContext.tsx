@@ -721,8 +721,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = prev.map((p) => {
         const itemMatch = processedItems.find((i) => i.product_id === p.id);
         if (itemMatch) {
+          const itemsPerPack = p.items_per_pack || p.units_per_package || 1;
           const newUnitStock = Math.max(0, (p.unit_stock || 0) - itemMatch.quantity);
-          const newPkgStock = Math.floor(newUnitStock / (p.units_per_package || 1));
+          const newPkgStock = Math.floor(newUnitStock / itemsPerPack);
           return {
             ...p,
             unit_stock: newUnitStock,
@@ -826,8 +827,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = prev.map((p) => {
         const itemMatch = sale.items.find((it) => it.product_id === p.id);
         if (itemMatch) {
+          const itemsPerPack = p.items_per_pack || p.units_per_package || 1;
           const newUnitStock = (p.unit_stock || 0) + itemMatch.quantity;
-          const newPkgStock = p.units_per_package > 0 ? Math.floor(newUnitStock / p.units_per_package) : 0;
+          const newPkgStock = Math.floor(newUnitStock / itemsPerPack);
           return {
             ...p,
             unit_stock: newUnitStock,
@@ -892,12 +894,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createProduct = async (payload: Partial<Product>): Promise<Product> => {
     if (!boutique) throw new Error('Boutique non sélectionnée.');
 
+    const isPack = payload.packaging_type === 'pack' || (payload.items_per_pack !== undefined && Number(payload.items_per_pack) > 1);
+    const packagingType = isPack ? 'pack' : 'article';
+    const itemsPerPack = isPack ? Math.max(2, Math.floor(Number(payload.items_per_pack || payload.units_per_package || 2))) : 1;
+
     const pkgPrice = Number(payload.package_purchase_price) || 0;
-    const unitsPerPkg = Math.max(1, Number(payload.units_per_package) || 1);
-    const calculatedUnitPurchasePrice = Math.round((pkgPrice / unitsPerPkg) * 100) / 100;
+    const calculatedUnitPurchasePrice = isPack
+      ? Math.round((pkgPrice / itemsPerPack) * 100) / 100
+      : (payload.unit_purchase_price !== undefined ? Number(payload.unit_purchase_price) : pkgPrice);
+
     const salePrice = Number(payload.unit_sale_price) || 0;
-    const pkgStock = Number(payload.package_stock) || 0;
-    const totalUnitStock = payload.unit_stock !== undefined && Number(payload.unit_stock) > 0 ? Number(payload.unit_stock) : pkgStock * unitsPerPkg;
+    const packSalePrice = payload.pack_sale_price !== undefined
+      ? Number(payload.pack_sale_price)
+      : (isPack ? salePrice * itemsPerPack : undefined);
+
+    let totalUnitStock = 0;
+    if (payload.unit_stock !== undefined) {
+      totalUnitStock = Number(payload.unit_stock);
+    } else {
+      const pkgStockInput = Number(payload.package_stock) || 0;
+      totalUnitStock = isPack ? pkgStockInput * itemsPerPack : pkgStockInput;
+    }
+
+    const packageStock = isPack ? Math.floor(totalUnitStock / itemsPerPack) : totalUnitStock;
 
     const now = new Date().toISOString();
     const product: Product = {
@@ -905,12 +924,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       boutique_id: boutique.id,
       name: payload.name ? payload.name.trim() : 'Nouveau Produit',
       category: payload.category ? payload.category.trim() : 'Épicerie',
-      package_type: payload.package_type ? payload.package_type.trim() : 'Unité',
+      packaging_type: packagingType,
+      items_per_pack: isPack ? itemsPerPack : undefined,
+      package_type: payload.package_type ? payload.package_type.trim() : (isPack ? 'Paquet' : 'Article'),
       package_purchase_price: pkgPrice,
-      units_per_package: unitsPerPkg,
+      units_per_package: itemsPerPack,
       unit_purchase_price: calculatedUnitPurchasePrice,
       unit_sale_price: salePrice,
-      package_stock: pkgStock,
+      pack_sale_price: packSalePrice,
+      package_stock: packageStock,
       unit_stock: totalUnitStock,
       min_alert_threshold: Number(payload.min_alert_threshold) || 10,
       expiration_date: payload.expiration_date ? String(payload.expiration_date) : undefined,
@@ -933,7 +955,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         offlineStorage.enqueue({
           type: 'CREATE_PRODUCT',
           title: `Ajout produit : ${product.name}`,
-          details: `Stock initial: ${product.unit_stock} unités`,
+          details: `Stock initial: ${product.unit_stock} articles`,
           payload: product,
         });
       }
@@ -941,12 +963,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       offlineStorage.enqueue({
         type: 'CREATE_PRODUCT',
         title: `Ajout produit : ${product.name}`,
-        details: `Stock initial: ${product.unit_stock} unités`,
+        details: `Stock initial: ${product.unit_stock} articles`,
         payload: product,
       });
     }
 
-    createAuditLog('CREATE', 'product', `Création produit "${product.name}" (stock: ${product.unit_stock})`, product.id);
+    createAuditLog('CREATE', 'product', `Création produit "${product.name}" (${product.packaging_type === 'pack' ? `Paquet de ${product.items_per_pack}` : 'Article'}, stock: ${product.unit_stock} articles)`, product.id);
     return product;
   };
 
@@ -954,27 +976,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existing = products.find((p) => p.id === id);
     if (!existing) throw new Error('Produit introuvable.');
 
-    const pkgPrice = payload.package_purchase_price !== undefined ? Number(payload.package_purchase_price) : existing.package_purchase_price;
-    const unitsPerPkg = payload.units_per_package !== undefined ? Math.max(1, Number(payload.units_per_package)) : existing.units_per_package;
-    const calculatedUnitPurchasePrice = Math.round((pkgPrice / unitsPerPkg) * 100) / 100;
+    const newPackagingType = payload.packaging_type !== undefined
+      ? payload.packaging_type
+      : (existing.packaging_type || ((existing.units_per_package || 1) > 1 ? 'pack' : 'article'));
+    const isPack = newPackagingType === 'pack';
+
+    const itemsPerPack = isPack
+      ? Math.max(2, Math.floor(Number(payload.items_per_pack ?? payload.units_per_package ?? existing.items_per_pack ?? existing.units_per_package ?? 2)))
+      : 1;
+
+    const pkgPrice = payload.package_purchase_price !== undefined
+      ? Number(payload.package_purchase_price)
+      : existing.package_purchase_price;
+
+    const calculatedUnitPurchasePrice = isPack
+      ? Math.round((pkgPrice / itemsPerPack) * 100) / 100
+      : (payload.unit_purchase_price !== undefined ? Number(payload.unit_purchase_price) : (payload.package_purchase_price !== undefined ? Number(payload.package_purchase_price) : existing.unit_purchase_price));
 
     let totalUnitStock = existing.unit_stock;
     if (payload.unit_stock !== undefined) {
       totalUnitStock = Number(payload.unit_stock);
     } else if (payload.package_stock !== undefined) {
-      totalUnitStock = Number(payload.package_stock) * unitsPerPkg;
+      totalUnitStock = isPack ? Number(payload.package_stock) * itemsPerPack : Number(payload.package_stock);
     }
 
-    const packageStock = payload.package_stock !== undefined ? Number(payload.package_stock) : Math.floor(totalUnitStock / unitsPerPkg);
+    const packageStock = isPack ? Math.floor(totalUnitStock / itemsPerPack) : totalUnitStock;
+    const salePrice = payload.unit_sale_price !== undefined ? Number(payload.unit_sale_price) : existing.unit_sale_price;
+
+    const packSalePrice = payload.pack_sale_price !== undefined
+      ? Number(payload.pack_sale_price)
+      : (isPack ? (existing.pack_sale_price || salePrice * itemsPerPack) : undefined);
 
     const updates: Partial<Product> = {
       name: payload.name ? payload.name.trim() : existing.name,
       category: payload.category ? payload.category.trim() : existing.category,
-      package_type: payload.package_type ? payload.package_type.trim() : existing.package_type,
+      packaging_type: newPackagingType,
+      items_per_pack: isPack ? itemsPerPack : undefined,
+      package_type: payload.package_type ? payload.package_type.trim() : (isPack ? 'Paquet' : 'Article'),
       package_purchase_price: pkgPrice,
-      units_per_package: unitsPerPkg,
+      units_per_package: itemsPerPack,
       unit_purchase_price: calculatedUnitPurchasePrice,
-      unit_sale_price: payload.unit_sale_price !== undefined ? Number(payload.unit_sale_price) : existing.unit_sale_price,
+      unit_sale_price: salePrice,
+      pack_sale_price: packSalePrice,
       package_stock: packageStock,
       unit_stock: totalUnitStock,
       min_alert_threshold: payload.min_alert_threshold !== undefined ? Number(payload.min_alert_threshold) : existing.min_alert_threshold,

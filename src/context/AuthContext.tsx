@@ -4,6 +4,8 @@ import { firebaseAuthService, getCachedAuthProfile } from '../services/firebaseA
 import { realtimeClient } from '../services/realtime';
 import { api, setStoredToken } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
+import { getFirebaseErrorMessage } from '../lib/firebaseErrors';
+import { runFirebaseDiagnostics } from '../lib/firebaseDebug';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +13,7 @@ interface AuthContextType {
   role: 'admin' | 'cashier' | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  loading: boolean;
   needsEmailVerification: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -60,14 +63,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(initialData.user);
   const [boutique, setBoutique] = useState<Boutique | null>(initialData.boutique);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
-  // Only start in loading state if awaiting a Google redirect return or waiting initial sync
-  const isAwaitingRedirect =
-    typeof window !== 'undefined' && sessionStorage.getItem('bp_google_redirect_pending') === 'true';
-  const [isLoading, setIsLoading] = useState<boolean>(isAwaitingRedirect);
+  // Always begin in loading state until Firebase Auth confirms session status from indexedDB / auth servers
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Subscribe to real Firebase Auth State changes and process redirect return
   useEffect(() => {
+    // Run diagnostics in non-blocking manner on mount
+    runFirebaseDiagnostics();
+
     // 1. Process Google signInWithRedirect credential if user is returning from Google
     firebaseAuthService
       .checkGoogleRedirectResult()
@@ -82,23 +86,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .catch((err) => {
         console.warn('Redirect auth result error:', err);
-        const msg = err instanceof Error ? err.message : String(err || '');
-        if (msg.includes('unauthorized-domain')) {
-          setError(
-            `Le domaine "${window.location.hostname}" n'est pas encore autorisé dans Firebase Auth. Veuillez l'ajouter dans la Console Firebase (Authentification > Paramètres > Domaines autorisés).`
-          );
-        } else {
-          setError(msg);
-        }
+        const cleanMsg = getFirebaseErrorMessage(err);
+        setError(cleanMsg);
         setIsLoading(false);
       });
 
-    // 2. Safety timeout guard: do not block the UI for more than 1.2s under any network condition
+    // 2. Safety timeout guard: do not block the UI indefinitely under extreme network degradation
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
-    }, 1200);
+    }, 2500);
 
-    // 3. Official Firebase Auth listener
+    // 3. Official Firebase Auth listener (Primary source of truth)
     const unsubscribe = firebaseAuthService.onAuthStateChange(
       ({ user: authUser, boutique: authBtq, needsEmailVerification: unverified, isAuthLoading }) => {
         clearTimeout(safetyTimer);
@@ -158,16 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setNeedsEmailVerification(res.needsEmailVerification);
       realtimeClient.connect();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Échec de connexion';
-      // User-friendly Firebase Auth error messages in French
-      let cleanMsg = msg;
-      if (msg.includes('auth/invalid-credential') || msg.includes('auth/user-not-found') || msg.includes('auth/wrong-password')) {
-        cleanMsg = 'Identifiants incorrects (adresse e-mail ou mot de passe invalide).';
-      } else if (msg.includes('auth/invalid-email')) {
-        cleanMsg = 'Format d’adresse e-mail invalide.';
-      } else if (msg.includes('auth/too-many-requests')) {
-        cleanMsg = 'Trop de tentatives infructueuses. Veuillez patienter quelques instants.';
-      }
+      const cleanMsg = getFirebaseErrorMessage(err);
       setError(cleanMsg);
       throw new Error(cleanMsg);
     } finally {
@@ -211,15 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setNeedsEmailVerification(res.needsEmailVerification);
       realtimeClient.connect();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Échec de l’inscription';
-      let cleanMsg = msg;
-      if (msg.includes('auth/email-already-in-use')) {
-        cleanMsg = 'Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter.';
-      } else if (msg.includes('auth/weak-password')) {
-        cleanMsg = 'Le mot de passe doit comporter au moins 6 caractères.';
-      } else if (msg.includes('auth/invalid-email')) {
-        cleanMsg = 'Format d’adresse e-mail invalide.';
-      }
+      const cleanMsg = getFirebaseErrorMessage(err);
       setError(cleanMsg);
       throw new Error(cleanMsg);
     } finally {
@@ -238,23 +219,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNeedsEmailVerification(false);
         realtimeClient.connect();
         setIsLoading(false);
-      } else {
-        // Redirection plein écran déclenchée via signInWithRedirect
-        // On maintient l'état de chargement pendant la navigation du navigateur vers Google
       }
     } catch (err: unknown) {
       setIsLoading(false);
-      const msg = err instanceof Error ? err.message : 'Échec de la connexion Google';
-      if (msg.includes('auth/popup-closed-by-user')) {
-        setError('Fenêtre de connexion Google fermée par l’utilisateur.');
-      } else if (msg.includes('auth/unauthorized-domain')) {
-        setError(
-          `Le domaine actuel "${window.location.hostname}" n'est pas encore autorisé dans Firebase Console (Authentification > Paramètres > Domaines autorisés). Ajoutez-le ou connectez-vous par e-mail ci-dessous.`
-        );
-      } else {
-        setError(msg);
-      }
-      throw err;
+      const cleanMsg = getFirebaseErrorMessage(err);
+      setError(cleanMsg);
+      throw new Error(cleanMsg);
     }
   };
 
@@ -331,6 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: user?.role || null,
         isAuthenticated: !!user,
         isLoading,
+        loading: isLoading,
         needsEmailVerification,
         error,
         login,

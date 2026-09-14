@@ -25,12 +25,14 @@ import {
   Truck,
   Settings,
   RotateCcw,
+  Tag,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product } from '../../types';
 import { formatCurrency, formatDate, formatDateShort } from '../../lib/formatters';
 import { SalesHistoryModal } from '../POS/SalesHistoryModal';
 import { QuickRestockModal } from '../Products/QuickRestockModal';
+import { isPackProduct, getProductStockBreakdown } from '../../lib/packaging';
 
 interface AdminDashboardProps {
   onOpenWithdrawal: () => void;
@@ -553,15 +555,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </div>
                           <div className="text-[11px] text-amber-700">
-                            Seuil d'alerte : {threshold} unités
+                            Seuil d'alerte : {threshold} articles
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="text-right font-black text-amber-950">
-                            {p.unit_stock} unités
-                            <div className="text-[10px] text-amber-700">
-                              ({p.package_stock} {p.package_type}s)
-                            </div>
+                            {isPackProduct(p) ? (
+                              <>
+                                <div>{getProductStockBreakdown(p).formattedShort}</div>
+                                <div className="text-[10px] text-amber-700 font-semibold">
+                                  ({p.unit_stock} articles)
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>{p.unit_stock} articles</div>
+                                <div className="text-[10px] text-amber-700 font-semibold">
+                                  (à l'unité)
+                                </div>
+                              </>
+                            )}
                           </div>
                           <button
                             id={`btn-dash-restock-${p.id}`}

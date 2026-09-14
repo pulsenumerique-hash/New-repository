@@ -8,10 +8,16 @@ import {
   Boxes,
   AlertTriangle,
   TrendingUp,
+  Tag,
 } from 'lucide-react';
 import { Product } from '../../types';
 import { formatCurrency } from '../../lib/formatters';
 import { useAuth } from '../../context/AuthContext';
+import {
+  isPackProduct,
+  getItemsPerPack,
+  getProductStockBreakdown,
+} from '../../lib/packaging';
 
 interface SupplierOrderModalProps {
   products: Product[];
@@ -36,19 +42,32 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
       const threshold = p.min_alert_threshold ?? 10;
       const targetStock = threshold * 2; // Recommended buffer: 2x threshold
       const unitsDeficit = Math.max(0, targetStock - p.unit_stock);
-      const unitsPerPkg = Math.max(1, p.units_per_package || 1);
-      const suggestedPackages = Math.max(1, Math.ceil(unitsDeficit / unitsPerPkg));
-      const lineCost = suggestedPackages * (p.package_purchase_price || 0);
+      const isPack = isPackProduct(p);
+      const itemsPerPack = getItemsPerPack(p);
+
+      const suggestedCount = isPack
+        ? Math.max(1, Math.ceil(unitsDeficit / itemsPerPack))
+        : Math.max(1, unitsDeficit);
+
+      const packagePrice = p.package_purchase_price || (isPack ? p.unit_purchase_price * itemsPerPack : p.unit_purchase_price);
+      const lineCost = isPack
+        ? suggestedCount * packagePrice
+        : suggestedCount * p.unit_purchase_price;
+
+      const totalArticlesSuggested = isPack ? suggestedCount * itemsPerPack : suggestedCount;
+      const breakdown = getProductStockBreakdown(p);
 
       return {
         product: p,
         currentStock: p.unit_stock,
         threshold,
-        suggestedPackages,
-        packageType: p.package_type,
-        unitsPerPackage: unitsPerPkg,
+        isPack,
+        itemsPerPack,
+        suggestedCount,
+        totalArticlesSuggested,
+        breakdown,
         unitPurchasePrice: p.unit_purchase_price,
-        packagePurchasePrice: p.package_purchase_price,
+        packagePurchasePrice: packagePrice,
         lineCost,
       };
     });
@@ -75,9 +94,13 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
     text += `-------------------------------------------\n`;
 
     orderLines.forEach((item, index) => {
+      const packagingDetail = item.isPack
+        ? `${item.suggestedCount} paquet(s) de ${item.itemsPerPack} art. (≈ ${item.totalArticlesSuggested} articles)`
+        : `${item.suggestedCount} article(s)`;
+
       text += `${index + 1}. ${item.product.name}\n`;
-      text += `   • Quantité : ${item.suggestedPackages} ${item.packageType}(s)\n`;
-      text += `   • Stock actuel : ${item.currentStock} unités (Seuil : ${item.threshold})\n`;
+      text += `   • Quantité : ${packagingDetail}\n`;
+      text += `   • Stock actuel : ${item.currentStock} articles (Seuil : ${item.threshold})\n`;
       text += `   • Prix estimé : ${formatCurrency(item.lineCost)}\n\n`;
     });
 
@@ -143,12 +166,12 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
 
             <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
               <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-800">
-                Colis à Commander
+                Unités / Paquets à Commander
               </span>
               <div className="text-2xl font-black text-indigo-950 mt-1">
-                {orderLines.reduce((acc, l) => acc + l.suggestedPackages, 0)} conditionnements
+                {orderLines.reduce((acc, l) => acc + l.suggestedCount, 0)} unités/pqts
               </div>
-              <span className="text-[11px] text-indigo-700 font-medium">Cartons, sacs, casiers</span>
+              <span className="text-[11px] text-indigo-700 font-medium">Selon l'unité de commande</span>
             </div>
 
             <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
@@ -167,10 +190,10 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
                 <tr>
-                  <th className="py-3 px-4">Produit</th>
+                  <th className="py-3 px-4">Produit & Conditionnement</th>
                   <th className="py-3 px-3 text-center">Stock / Seuil</th>
                   <th className="py-3 px-4 text-center">Commande Suggérée</th>
-                  <th className="py-3 px-4 text-right">Prix Unité Gros</th>
+                  <th className="py-3 px-4 text-right">Prix Achat (Pqt / Art.)</th>
                   <th className="py-3 px-4 text-right">Total Ligne</th>
                 </tr>
               </thead>
@@ -186,8 +209,20 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
                     <tr key={item.product.id} className="hover:bg-slate-50/60 transition">
                       <td className="py-3.5 px-4">
                         <div className="font-extrabold text-slate-900 text-xs">{item.product.name}</div>
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          {item.product.category} • Conditionnement: {item.packageType} ({item.unitsPerPackage} unités)
+                        <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
+                          <span>{item.product.category}</span>
+                          <span>•</span>
+                          {item.isPack ? (
+                            <span className="inline-flex items-center gap-0.5 text-indigo-700 font-bold">
+                              <Boxes className="w-3 h-3" />
+                              Paquet ({item.itemsPerPack} art.)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 text-slate-600 font-semibold">
+                              <Tag className="w-3 h-3" />
+                              Article
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3.5 px-3 text-center">
@@ -196,19 +231,23 @@ export const SupplierOrderModal: React.FC<SupplierOrderModalProps> = ({ products
                             ? 'bg-rose-50 text-rose-700 border-rose-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200'
                         }`}>
-                          {item.currentStock} / {item.threshold}
+                          {item.isPack ? item.breakdown.formattedShort : `${item.currentStock} art.`} (Seuil: {item.threshold})
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="font-black text-indigo-900 text-sm">
-                          {item.suggestedPackages} {item.packageType}(s)
+                          {item.isPack
+                            ? `${item.suggestedCount} paquet(s)`
+                            : `${item.suggestedCount} article(s)`}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-medium">
-                          ≈ +{item.suggestedPackages * item.unitsPerPackage} unités
-                        </div>
+                        {item.isPack && (
+                          <div className="text-[10px] text-slate-500 font-medium">
+                            ≈ +{item.totalArticlesSuggested} articles
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-slate-600">
-                        {formatCurrency(item.packagePurchasePrice)}
+                        {formatCurrency(item.isPack ? item.packagePurchasePrice : item.unitPurchasePrice)}
                       </td>
                       <td className="py-3.5 px-4 text-right font-black text-slate-900">
                         {formatCurrency(item.lineCost)}

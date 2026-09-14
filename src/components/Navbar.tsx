@@ -27,10 +27,15 @@ import {
   Trash2,
   Truck,
   Settings,
+  ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../lib/formatters';
+import { BrandKitModal } from './Common/BrandKitModal';
+import { PrivacyPolicyModal } from './Common/PrivacyPolicyModal';
+import { TermsModal } from './Common/TermsModal';
 
 interface NavbarProps {
   onOpenDevices: () => void;
@@ -66,9 +71,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [alertsTab, setAlertsTab] = useState<'stock' | 'credit'>('stock');
   const [isSyncOpen, setIsSyncOpen] = useState(false);
+  const [isBrandKitOpen, setIsBrandKitOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const alertsDropdownRef = useRef<HTMLDivElement>(null);
   const syncDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Check URL hash for direct privacy or terms navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      if (window.location.hash === '#privacy') {
+        setIsPrivacyOpen(true);
+      } else if (window.location.hash === '#terms') {
+        setIsTermsOpen(true);
+      }
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Compute products below safety threshold
   const lowStockProducts = useMemo(() => {
@@ -200,9 +222,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Logo & Boutique info */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 border border-white/10">
-              <Store className="w-5 h-5" />
-            </div>
+            <button
+              id="btn-navbar-brand-kit"
+              type="button"
+              onClick={() => setIsBrandKitOpen(true)}
+              title="Afficher la Charte Graphique & Branding BoutiquePro"
+              className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 border border-white/10 hover:scale-105 active:scale-95 transition cursor-pointer group"
+            >
+              <Store className="w-5 h-5 transition group-hover:rotate-6" />
+            </button>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-base text-white tracking-tight leading-tight">
@@ -655,6 +683,26 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
+            {/* Conditions d'utilisation */}
+            <button
+              id="btn-open-terms"
+              onClick={() => setIsTermsOpen(true)}
+              title="Conditions d'Utilisation (Fadir)"
+              className="p-2 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded-xl transition border border-transparent hover:border-slate-700"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+
+            {/* Politique de confidentialité */}
+            <button
+              id="btn-open-privacy"
+              onClick={() => setIsPrivacyOpen(true)}
+              title="Politique de Confidentialité (Fadir)"
+              className="p-2 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded-xl transition border border-transparent hover:border-slate-700"
+            >
+              <ShieldCheck className="w-4 h-4" />
+            </button>
+
             {/* Logout */}
             <button
               id="btn-logout"
@@ -701,6 +749,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </div>
       </div>
+
+      {/* MODAL BRAND KIT & CHARTE GRAPHIQUE */}
+      <BrandKitModal isOpen={isBrandKitOpen} onClose={() => setIsBrandKitOpen(false)} />
+
+      {/* MODAL CONDITIONS D'UTILISATION */}
+      <TermsModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
+
+      {/* MODAL POLITIQUE DE CONFIDENTIALITÉ */}
+      <PrivacyPolicyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
     </header>
   );
 };

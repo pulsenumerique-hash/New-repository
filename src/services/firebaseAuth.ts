@@ -149,6 +149,7 @@ export const firebaseAuthService = {
       await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
       await setDoc(doc(db, 'users', fbUser.uid), {
         ...user,
+        uid: fbUser.uid,
         email_verified: fbUser.emailVerified,
         updated_at: now,
       });
@@ -218,7 +219,7 @@ export const firebaseAuthService = {
           last_login: now,
         };
         try {
-          await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
+          await setDoc(userDocRef, { ...user, uid: fbUser.uid, email_verified: fbUser.emailVerified });
         } catch (e) {
           console.warn('Could not write user doc while offline:', e);
         }
@@ -374,6 +375,7 @@ export const firebaseAuthService = {
         try {
           await setDoc(userDocRef, {
             ...user,
+            uid: fbUser.uid,
             email_verified: true,
             provider: 'google',
           });
@@ -965,7 +967,7 @@ export const firebaseAuthService = {
 
           try {
             await setDoc(doc(db, 'boutiques', boutiqueId), boutique);
-            await setDoc(userDocRef, { ...user, email_verified: fbUser.emailVerified });
+            await setDoc(userDocRef, { ...user, uid: fbUser.uid, email_verified: fbUser.emailVerified });
           } catch (writeErr) {
             console.warn('Notice: Deferred write while offline:', writeErr);
           }

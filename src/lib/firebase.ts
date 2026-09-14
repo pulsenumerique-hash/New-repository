@@ -18,10 +18,15 @@ import defaultFirebaseConfig from '../../firebase-applet-config.json';
 // and gracefully fall back to the bundled firebase-applet-config.json
 const rawConfig = (defaultFirebaseConfig || {}) as Record<string, string>;
 
+// If a custom project ID is provided via env var that differs from the bundled AI Studio template,
+// we should only use a custom firestore database ID if explicitly specified via VITE_FIRESTORE_DATABASE_ID.
+const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const isCustomProject = Boolean(envProjectId && rawConfig.projectId && envProjectId !== rawConfig.projectId);
+
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || rawConfig.apiKey || '',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || rawConfig.authDomain || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || '',
+  projectId: envProjectId || rawConfig.projectId || '',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket || '',
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId || '',
   appId: import.meta.env.VITE_FIREBASE_APP_ID || rawConfig.appId || '',
@@ -29,8 +34,7 @@ export const firebaseConfig = {
   firestoreDatabaseId:
     import.meta.env.VITE_FIRESTORE_DATABASE_ID ||
     import.meta.env.VITE_FIREBASE_DATABASE_ID ||
-    rawConfig.firestoreDatabaseId ||
-    '',
+    (isCustomProject ? '' : rawConfig.firestoreDatabaseId || ''),
   oAuthClientId: import.meta.env.VITE_FIREBASE_OAUTH_CLIENT_ID || rawConfig.oAuthClientId || '',
 };
 
@@ -78,13 +82,33 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 // Firebase Authentication
 export const auth = getAuth(app);
 
+// Use device language for international Google OAuth dialogs
+try {
+  auth.useDeviceLanguage();
+} catch (langErr) {
+  console.warn('Could not set device language on Firebase Auth:', langErr);
+}
+
 // Configure persistent auth session across tab refreshes and browser restarts
 setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.warn('Could not set auth persistence:', err);
 });
 
-// Official Google OAuth Provider
+/**
+ * Fournisseur officiel Google OAuth (GoogleAuthProvider)
+ * Configuré sans aucune restriction pour autoriser TOUS les utilisateurs Google (comptes personnels @gmail.com,
+ * comptes professionnels Google Workspace, etc.).
+ * Aucune restriction de domaine 'hd' (hosted domain) n'est imposée.
+ */
 export const googleProvider = new GoogleAuthProvider();
+
+// Scopes ouverts standards pour l'identité et le profil
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
+googleProvider.addScope('openid');
+
+// Paramètres personnalisés ouverts :
+// - prompt: 'select_account' permet à l'utilisateur de choisir n'importe lequel de ses comptes Google connectés
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });

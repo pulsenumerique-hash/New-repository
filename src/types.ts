@@ -27,19 +27,24 @@ export interface Boutique {
   created_at: string;
 }
 
+export type PackagingType = 'article' | 'pack';
+
 export interface Product {
   id: string;
   boutique_id: string;
   name: string;
   category: string;
-  package_type: string; // e.g. "Carton", "Paquet", "Sac", "Casier", "Boîte", "Unité"
-  package_purchase_price: number; // Prix d'achat du conditionnement (ex: 10 000 FCFA)
-  units_per_package: number; // Nombre d'unités par conditionnement (ex: 20)
-  unit_purchase_price: number; // Calculé auto: package_purchase_price / units_per_package
-  unit_sale_price: number; // Prix de vente à l'unité saisi
-  package_stock: number; // Quantité en conditionnements entiers
-  unit_stock: number; // Quantité totale en unités disponibles à la vente (package_stock * units_per_package + extra)
-  min_alert_threshold?: number; // Seuil d'alerte stock faible configurable
+  packaging_type?: PackagingType; // 'article' (vente à l'unité) ou 'pack' (paquet de X articles)
+  items_per_pack?: number; // Nombre d'articles par paquet (si packaging_type === 'pack', entier >= 2)
+  package_type: string; // "Article", "Paquet", ou libellé personnalisé ("Carton", etc.)
+  package_purchase_price: number; // Prix d'achat du paquet (ou de l'article si article)
+  units_per_package: number; // Unités par conditionnement (1 pour article, items_per_pack pour pack)
+  unit_purchase_price: number; // Prix d'achat unitaire (package_purchase_price / units_per_package)
+  unit_sale_price: number; // Prix de vente à l'article individuel
+  pack_sale_price?: number; // Prix de vente du paquet complet
+  package_stock: number; // Nombre de paquets entiers disponibles
+  unit_stock: number; // Total d'articles vendables (articles unitaires totaux)
+  min_alert_threshold?: number; // Seuil d'alerte stock faible en articles
   expiration_date?: string; // Date de péremption (YYYY-MM-DD)
   supplier_id?: string;
   barcode?: string;
@@ -53,10 +58,13 @@ export type PaymentMethodDetail = 'cash' | 'credit' | 'wave' | 'orange_money' | 
 export interface SaleItem {
   product_id: string;
   product_name: string;
-  quantity: number; // In retail units
-  unit_price: number;
+  quantity: number; // Quantité totale d'articles retirés du stock (ex: 12 pour 1 paquet de 12)
+  unit_price: number; // Prix unitaire appliqué
   total_price: number;
   unit_purchase_price: number;
+  sale_unit_type?: 'article' | 'pack'; // Vendu sous forme de paquet entier ou d'article à l'unité
+  sold_packs?: number; // Nombre de paquets vendus (si vendu au paquet)
+  sold_articles?: number; // Nombre d'articles individuels vendus
 }
 
 export interface Sale {

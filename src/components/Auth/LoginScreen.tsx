@@ -14,10 +14,15 @@ import {
   Globe,
   Download,
   Usb,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AndroidUSBInstallModal } from '../PWA/AndroidUSBInstallModal';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
+import { PrivacyPolicyModal } from '../Common/PrivacyPolicyModal';
+import { TermsModal } from '../Common/TermsModal';
+import { GoogleAuthDomainsModal } from '../Common/GoogleAuthDomainsModal';
+import { getFirebaseErrorMessage } from '../../lib/firebaseErrors';
 
 export const LoginScreen: React.FC = () => {
   const { login, register, googleLogin, forgotPassword, error, clearError } = useAuth();
@@ -26,6 +31,9 @@ export const LoginScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showPwaModal, setShowPwaModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showGoogleConfigModal, setShowGoogleConfigModal] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -42,12 +50,18 @@ export const LoginScreen: React.FC = () => {
   // Forgot password modal
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
-  // Détection automatique si l'utilisateur arrive depuis un e-mail de réinitialisation
+  // Détection automatique si l'utilisateur arrive depuis un e-mail de réinitialisation ou un hash direct
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('code') || params.get('oobCode') || params.get('mode') === 'resetPassword') {
         setShowForgotPassword(true);
+      }
+
+      if (window.location.hash === '#terms') {
+        setShowTermsModal(true);
+      } else if (window.location.hash === '#privacy') {
+        setShowPrivacyModal(true);
       }
     }
   }, []);
@@ -66,8 +80,7 @@ export const LoginScreen: React.FC = () => {
     try {
       await login(loginEmail, loginPassword);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur de connexion';
-      setLocalError(msg);
+      setLocalError(getFirebaseErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -104,8 +117,7 @@ export const LoginScreen: React.FC = () => {
         password_confirm: regPasswordConfirm,
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur lors de la création du compte';
-      setLocalError(msg);
+      setLocalError(getFirebaseErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -139,7 +151,7 @@ export const LoginScreen: React.FC = () => {
           setRedirectingGoogle(false);
         }
       } else {
-        setLocalError(err instanceof Error ? err.message : 'Erreur de connexion Google');
+        setLocalError(getFirebaseErrorMessage(err));
         setRedirectingGoogle(false);
       }
     } finally {
@@ -242,9 +254,34 @@ export const LoginScreen: React.FC = () => {
           </div>
 
           {(error || localError) && (
-            <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+            <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-              <span>{error || localError}</span>
+              <div className="flex-1">
+                <p className="font-semibold">{error || localError}</p>
+                {(error || localError)?.includes('Domaines autorisés') && (
+                  <div className="mt-2 text-[11px] text-rose-900 bg-white/80 p-2.5 rounded-xl border border-rose-200">
+                    <p className="font-bold mb-1">Guide pour résoudre ce problème sur Netlify / Cloud :</p>
+                    <ol className="list-decimal pl-4 space-y-0.5 mb-2">
+                      <li>Ouvrez la <strong>Console Firebase</strong> &gt; Votre Projet.</li>
+                      <li>Allez dans <strong>Authentification</strong> &gt; onglet <strong>Paramètres</strong> &gt; <strong>Domaines autorisés</strong>.</li>
+                      <li>Cliquez sur <strong>Ajouter un domaine</strong> et ajoutez : <code className="bg-rose-100 px-1 py-0.5 rounded font-mono font-bold text-[10px]">{typeof window !== 'undefined' ? window.location.hostname : 'votre-app.netlify.app'}</code></li>
+                    </ol>
+                    <button
+                      type="button"
+                      onClick={() => setShowGoogleConfigModal(true)}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs transition cursor-pointer"
+                    >
+                      Ouvrir l'assistant des domaines & Google Auth
+                    </button>
+                  </div>
+                )}
+                {(error || localError)?.includes('Sign-in method') && (
+                  <div className="mt-2 text-[11px] text-rose-900 bg-white/80 p-2.5 rounded-xl border border-rose-200">
+                    <p className="font-bold mb-1">Activation du fournisseur Firebase :</p>
+                    <p>Dans Firebase Console &gt; Authentification &gt; Sign-in method, activez le fournisseur <strong>E-mail/Mot de passe</strong>.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -282,16 +319,28 @@ export const LoginScreen: React.FC = () => {
           </button>
 
           {/* Fallback button if popup is blocked by mobile or browser settings */}
-          <div className="mt-2 text-center">
-            <button
-              id="btn-google-redirect-direct"
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => handleGoogleAuth(true)}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 underline underline-offset-2 font-medium cursor-pointer transition"
-            >
-              Pop-up bloquée ? Connexion Google directe (pleine page)
-            </button>
+          <div className="mt-2 text-center space-y-1">
+            <div>
+              <button
+                id="btn-google-redirect-direct"
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleGoogleAuth(true)}
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 underline underline-offset-2 font-medium cursor-pointer transition"
+              >
+                Pop-up bloquée ? Connexion Google directe (pleine page)
+              </button>
+            </div>
+            <div>
+              <button
+                id="btn-open-google-domains-modal"
+                type="button"
+                onClick={() => setShowGoogleConfigModal(true)}
+                className="text-[10px] text-slate-500 hover:text-teal-600 underline transition cursor-pointer"
+              >
+                Vérifier les domaines autorisés Firebase & Google OAuth
+              </button>
+            </div>
           </div>
 
           <div className="relative my-5">
@@ -523,10 +572,72 @@ export const LoginScreen: React.FC = () => {
             <span>Installer</span>
           </button>
         </div>
+
+        {/* Legal, Terms of Service & Privacy Policy Links */}
+        <div className="mt-4 pt-3 border-t border-slate-800/60 text-center text-slate-400 text-[11px] space-y-1">
+          <div>
+            En utilisant BoutiquePro, vous acceptez nos{' '}
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(true)}
+              className="text-teal-400 font-bold underline hover:text-teal-300 transition cursor-pointer"
+            >
+              Conditions d'Utilisation
+            </button>{' '}
+            et notre{' '}
+            <button
+              type="button"
+              onClick={() => setShowPrivacyModal(true)}
+              className="text-teal-400 font-bold underline hover:text-teal-300 transition cursor-pointer"
+            >
+              Politique de Confidentialité
+            </button>
+            .
+          </div>
+          <div className="text-[10px] text-slate-500 flex items-center justify-center flex-wrap gap-2">
+            <span>&copy; 2026 BoutiquePro • Édité par Fadir</span>
+            <span>•</span>
+            <a
+              href="/terms.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-300 underline"
+            >
+              Conditions (Web)
+            </a>
+            <span>•</span>
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-300 underline"
+            >
+              Confidentialité (Web)
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Android USB & APK Install Modal on Login */}
       {showPwaModal && <AndroidUSBInstallModal onClose={() => setShowPwaModal(false)} />}
+
+      {/* Terms of Service Modal */}
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+      />
+
+      {/* Privacy Policy Modal */}
+      <PrivacyPolicyModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+      />
+
+      {/* Google Auth & Firebase Authorized Domains Modal */}
+      <GoogleAuthDomainsModal
+        isOpen={showGoogleConfigModal}
+        onClose={() => setShowGoogleConfigModal(false)}
+      />
 
       {/* 8-Digit Password Reset Modal */}
       {showForgotPassword && (

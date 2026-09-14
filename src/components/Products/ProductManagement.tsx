@@ -21,11 +21,15 @@ import {
   Calendar,
   Clock,
   Truck,
+  Layers,
+  Tag,
+  Info,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { Product } from '../../types';
+import { Product, PackagingType } from '../../types';
 import { formatCurrency, formatDateShort } from '../../lib/formatters';
+import { isPackProduct, getItemsPerPack, getProductStockBreakdown } from '../../lib/packaging';
 import { StockAlertBanner } from './StockAlertBanner';
 import { QuickRestockModal } from './QuickRestockModal';
 import { SupplierOrderModal } from './SupplierOrderModal';
@@ -47,21 +51,34 @@ export const ProductManagement: React.FC = () => {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
-  // Form states with automatic conversion gros -> détail
+  // Form states: Type de conditionnement (Article ou Paquet)
+  const [packagingType, setPackagingType] = useState<PackagingType>('article');
+  const [itemsPerPack, setItemsPerPack] = useState<number | ''>(12);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Épicerie');
-  const [packageType, setPackageType] = useState('Carton');
+  const [packageType, setPackageType] = useState('Paquet');
   const [packagePurchasePrice, setPackagePurchasePrice] = useState<number | ''>(10000);
-  const [unitsPerPackage, setUnitsPerPackage] = useState<number | ''>(20);
+  const [unitPurchasePrice, setUnitPurchasePrice] = useState<number | ''>(500);
   const [unitSalePrice, setUnitSalePrice] = useState<number | ''>(600);
+  const [packSalePrice, setPackSalePrice] = useState<number | ''>('');
   const [packageStock, setPackageStock] = useState<number | ''>(5);
-  const [unitStock, setUnitStock] = useState<number | ''>(100);
-  const [minAlertThreshold, setMinAlertThreshold] = useState<number | ''>(15);
+  const [extraArticles, setExtraArticles] = useState<number | ''>(0);
+  const [unitStock, setUnitStock] = useState<number | ''>(35);
+  const [minAlertThreshold, setMinAlertThreshold] = useState<number | ''>(10);
   const [barcode, setBarcode] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Warning when changing items per pack on an existing product with stock
+  const [packConversionWarning, setPackConversionWarning] = useState<{
+    show: boolean;
+    oldItemsPerPack: number;
+    newItemsPerPack: number;
+    unitStock: number;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Expiration helper
   const getExpirationStatus = (expDate?: string) => {
@@ -81,13 +98,19 @@ export const ProductManagement: React.FC = () => {
     return { status: 'good', label: `${diffDays}j restants`, days: diffDays };
   };
 
-  // Calcul automatique obligatoire : Prix d'achat du conditionnement ÷ Nombre d'unités
+  const isPack = packagingType === 'pack';
+  const effectiveItemsPerPack = isPack ? Math.max(2, Math.floor(Number(itemsPerPack) || 2)) : 1;
+
+  // Calcul automatique du prix d'achat unitaire
   const computedUnitPurchasePrice = useMemo(() => {
+    if (packagingType === 'article') {
+      return Number(unitPurchasePrice) || 0;
+    }
     const pkgPrice = Number(packagePurchasePrice) || 0;
-    const units = Number(unitsPerPackage) || 1;
-    if (units <= 0) return 0;
-    return Math.round((pkgPrice / units) * 100) / 100;
-  }, [packagePurchasePrice, unitsPerPackage]);
+    const items = Number(itemsPerPack) || 1;
+    if (items <= 0) return 0;
+    return Math.round((pkgPrice / items) * 100) / 100;
+  }, [packagingType, unitPurchasePrice, packagePurchasePrice, itemsPerPack]);
 
   // Marge unitaire en FCFA et %
   const unitMargin = useMemo(() => {
@@ -100,82 +123,90 @@ export const ProductManagement: React.FC = () => {
     return Math.round((unitMargin / computedUnitPurchasePrice) * 100);
   }, [unitMargin, computedUnitPurchasePrice]);
 
+  // Total d'articles calculé automatiquement pour le stock
+  const computedTotalStockArticles = useMemo(() => {
+    if (packagingType === 'article') {
+      return Number(unitStock) || 0;
+    }
+    const pkgs = Number(packageStock) || 0;
+    const extra = Number(extraArticles) || 0;
+    const items = Number(itemsPerPack) || 1;
+    return pkgs * items + extra;
+  }, [packagingType, unitStock, packageStock, extraArticles, itemsPerPack]);
+
   // Handle open modal for create
   const handleOpenCreate = () => {
     setEditingProduct(null);
+    setPackagingType('article');
+    setItemsPerPack(12);
     setName('');
     setCategory('Épicerie');
-    setPackageType('Carton');
+    setPackageType('Paquet');
     setPackagePurchasePrice(10000);
-    setUnitsPerPackage(20);
+    setUnitPurchasePrice(500);
     setUnitSalePrice(600);
+    setPackSalePrice('');
     setPackageStock(5);
-    setUnitStock(100);
-    setMinAlertThreshold(15);
+    setExtraArticles(0);
+    setUnitStock(35);
+    setMinAlertThreshold(10);
     setBarcode('');
     setExpirationDate('');
     setSupplierId('');
     setFormError(null);
+    setPackConversionWarning(null);
     setIsModalOpen(true);
   };
 
   // Handle open modal for edit
   const handleOpenEdit = (prod: Product) => {
     setEditingProduct(prod);
+    const prodIsPack = isPackProduct(prod);
+    const prodItemsPerPack = getItemsPerPack(prod);
+    const breakdown = getProductStockBreakdown(prod);
+
+    setPackagingType(prodIsPack ? 'pack' : 'article');
+    setItemsPerPack(prodIsPack ? prodItemsPerPack : 12);
     setName(prod.name);
     setCategory(prod.category || 'Épicerie');
-    setPackageType(prod.package_type);
-    setPackagePurchasePrice(prod.package_purchase_price);
-    setUnitsPerPackage(prod.units_per_package);
-    setUnitSalePrice(prod.unit_sale_price);
-    setPackageStock(prod.package_stock);
+    setPackageType(prod.package_type || (prodIsPack ? 'Paquet' : 'Article'));
+    setPackagePurchasePrice(prod.package_purchase_price || 0);
+    setUnitPurchasePrice(prod.unit_purchase_price || prod.package_purchase_price || 0);
+    setUnitSalePrice(prod.unit_sale_price || 0);
+    setPackSalePrice(prod.pack_sale_price ?? (prodIsPack ? prod.unit_sale_price * prodItemsPerPack : ''));
+    setPackageStock(breakdown.fullPacks);
+    setExtraArticles(breakdown.looseArticles);
     setUnitStock(prod.unit_stock);
-    setMinAlertThreshold(prod.min_alert_threshold);
+    setMinAlertThreshold(prod.min_alert_threshold ?? 10);
     setBarcode(prod.barcode || '');
     setExpirationDate(prod.expiration_date || '');
     setSupplierId(prod.supplier_id || '');
     setFormError(null);
+    setPackConversionWarning(null);
     setIsModalOpen(true);
   };
 
-  // When package stock or units changes, recalculate unit stock recommendation
-  const handlePackageStockChange = (val: number | '') => {
-    setPackageStock(val);
-    if (val !== '' && unitsPerPackage !== '') {
-      setUnitStock(Number(val) * Number(unitsPerPackage));
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!name.trim()) {
-      setFormError('Le nom du produit est obligatoire.');
-      return;
-    }
-
-    if (!packageType.trim()) {
-      setFormError('Le type de conditionnement est obligatoire.');
-      return;
-    }
-
-    if (Number(unitsPerPackage) <= 0) {
-      setFormError('Le nombre d’unités par conditionnement doit être au moins de 1.');
-      return;
-    }
-
+  const executeSaveProduct = async () => {
     setIsSubmitting(true);
     try {
+      const isPackSelected = packagingType === 'pack';
+      const itemsPerPackNumber = isPackSelected ? Math.max(2, Math.floor(Number(itemsPerPack) || 2)) : 1;
+      const totalArticles = computedTotalStockArticles;
+      const fullPacks = isPackSelected ? Math.floor(totalArticles / itemsPerPackNumber) : totalArticles;
+
       const payload: Partial<Product> = {
         name: name.trim(),
         category: category.trim(),
-        package_type: packageType.trim(),
-        package_purchase_price: Number(packagePurchasePrice) || 0,
-        units_per_package: Number(unitsPerPackage) || 1,
+        packaging_type: packagingType,
+        items_per_pack: isPackSelected ? itemsPerPackNumber : undefined,
+        package_type: isPackSelected ? (packageType.trim() || 'Paquet') : 'Article',
+        package_purchase_price: isPackSelected ? (Number(packagePurchasePrice) || 0) : (Number(unitPurchasePrice) || 0),
+        units_per_package: itemsPerPackNumber,
+        unit_purchase_price: computedUnitPurchasePrice,
         unit_sale_price: Number(unitSalePrice) || 0,
-        package_stock: Number(packageStock) || 0,
-        unit_stock: Number(unitStock) || 0,
+        pack_sale_price: isPackSelected && packSalePrice !== '' ? Number(packSalePrice) : (isPackSelected ? (Number(unitSalePrice) || 0) * itemsPerPackNumber : undefined),
+        package_stock: fullPacks,
+        unit_stock: totalArticles,
         min_alert_threshold: Number(minAlertThreshold) || 10,
         barcode: barcode.trim() || undefined,
         expiration_date: expirationDate.trim() || undefined,
@@ -189,12 +220,55 @@ export const ProductManagement: React.FC = () => {
       }
 
       setIsModalOpen(false);
+      setPackConversionWarning(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de l’enregistrement';
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!name.trim()) {
+      setFormError('Le nom du produit est obligatoire.');
+      return;
+    }
+
+    if (packagingType === 'pack') {
+      if (itemsPerPack === '' || itemsPerPack === null || itemsPerPack === undefined) {
+        setFormError('Indiquez le nombre d’articles contenus dans ce paquet.');
+        return;
+      }
+      const numItems = Number(itemsPerPack);
+      if (isNaN(numItems) || numItems < 2 || !Number.isInteger(numItems)) {
+        setFormError('Le nombre d’articles par paquet doit être un nombre entier supérieur ou égal à 2.');
+        return;
+      }
+    }
+
+    // Safety check when modifying an existing product with existing stock
+    if (editingProduct && editingProduct.unit_stock > 0) {
+      const oldIsPack = isPackProduct(editingProduct);
+      const oldItems = getItemsPerPack(editingProduct);
+      const newItems = packagingType === 'pack' ? Number(itemsPerPack) : 1;
+
+      if ((oldIsPack && packagingType === 'pack' && oldItems !== newItems) || (oldIsPack !== (packagingType === 'pack'))) {
+        setPackConversionWarning({
+          show: true,
+          oldItemsPerPack: oldItems,
+          newItemsPerPack: newItems,
+          unitStock: editingProduct.unit_stock,
+          onConfirm: () => executeSaveProduct(),
+        });
+        return;
+      }
+    }
+
+    await executeSaveProduct();
   };
 
   const handleRequestDelete = (prod: Product) => {
@@ -562,11 +636,9 @@ export const ProductManagement: React.FC = () => {
               <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <th className="py-3.5 px-5">Produit & Catégorie</th>
                 <th className="py-3.5 px-4">Péremption</th>
-                <th className="py-3.5 px-4">Conditionnement (Gros)</th>
-                <th className="py-3.5 px-4 text-center">Unités / Pqt</th>
-                <th className="py-3.5 px-4 text-right">Prix Achat Gros</th>
-                <th className="py-3.5 px-4 text-right">Prix Achat Unité</th>
-                <th className="py-3.5 px-4 text-right">Prix Vente Unité</th>
+                <th className="py-3.5 px-4">Conditionnement</th>
+                <th className="py-3.5 px-4 text-right">Prix Achat Unitaire</th>
+                <th className="py-3.5 px-4 text-right">Prix Vente Unitaire</th>
                 <th className="py-3.5 px-4 text-center">Marge Unitaire</th>
                 <th className="py-3.5 px-4 text-center">Stock Disponible</th>
                 <th className="py-3.5 px-5 text-right">Actions</th>
@@ -575,7 +647,7 @@ export const ProductManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     Aucun produit ne correspond aux critères.
                   </td>
@@ -587,6 +659,9 @@ export const ProductManagement: React.FC = () => {
                   const margin = p.unit_sale_price - p.unit_purchase_price;
                   const marginPct = p.unit_purchase_price > 0 ? Math.round((margin / p.unit_purchase_price) * 100) : 0;
                   const expStatus = getExpirationStatus(p.expiration_date);
+                  const isPack = isPackProduct(p);
+                  const itemsPerPackCount = getItemsPerPack(p);
+                  const breakdown = getProductStockBreakdown(p);
 
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/70 transition">
@@ -627,20 +702,38 @@ export const ProductManagement: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">
-                        {p.package_type}
+                      {/* Conditionnement Column */}
+                      <td className="py-3.5 px-4">
+                        {isPack ? (
+                          <div className="flex flex-col">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black bg-indigo-50 text-indigo-900 border border-indigo-200">
+                              <Boxes className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span>Paquet ({itemsPerPackCount} art.)</span>
+                            </span>
+                            {p.package_purchase_price ? (
+                              <span className="text-[10px] text-slate-400 mt-0.5 font-semibold">
+                                Achat pqt : {formatCurrency(p.package_purchase_price)}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span>Article</span>
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-slate-800">
-                        {p.units_per_package}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-medium text-slate-600">
-                        {formatCurrency(p.package_purchase_price)}
-                      </td>
+
                       <td className="py-3.5 px-4 text-right font-semibold text-slate-700">
                         {formatCurrency(p.unit_purchase_price)}
                       </td>
                       <td className="py-3.5 px-4 text-right font-black text-indigo-950 text-sm">
                         {formatCurrency(p.unit_sale_price)}
+                        {isPack && (
+                          <div className="text-[10px] text-slate-400 font-normal">
+                            Pqt: {formatCurrency(p.pack_sale_price || p.unit_sale_price * itemsPerPackCount)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span
@@ -670,15 +763,12 @@ export const ProductManagement: React.FC = () => {
                               <Boxes className="w-3 h-3" />
                               <span>Réapprovisionner</span>
                             </button>
-                            <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
-                              Seuil: {p.min_alert_threshold ?? 10} u
-                            </span>
                           </div>
                         ) : isLow ? (
                           <div className="flex flex-col items-center gap-1">
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-950 font-black text-xs flex items-center gap-1 shadow-xs">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                              <span>{p.unit_stock} / {p.min_alert_threshold ?? 10} u</span>
+                              <span>{isPack ? breakdown.formattedShort : `${p.unit_stock} art.`}</span>
                             </span>
                             <div className="w-16 h-1 bg-amber-200 rounded-full mt-0.5 overflow-hidden">
                               <div
@@ -699,17 +789,25 @@ export const ProductManagement: React.FC = () => {
                               <span>Réapprovisionner</span>
                             </button>
                             <span className="text-[10px] text-amber-800 font-bold">
-                              {p.package_stock} {p.package_type}(s)
+                              Total : {p.unit_stock} articles
                             </span>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center">
-                            <span className="px-2.5 py-1 rounded-full font-bold text-xs bg-emerald-50 border border-emerald-200 text-emerald-900">
-                              {p.unit_stock} unités
-                            </span>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              ({p.package_stock} {p.package_type}s)
-                            </div>
+                            {isPack ? (
+                              <>
+                                <span className="px-2.5 py-1 rounded-full font-bold text-xs bg-indigo-50 border border-indigo-200 text-indigo-900">
+                                  {breakdown.formattedShort}
+                                </span>
+                                <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                                  Total : {p.unit_stock} articles
+                                </span>
+                              </>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full font-bold text-xs bg-emerald-50 border border-emerald-200 text-emerald-900">
+                                {p.unit_stock} articles
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>
@@ -857,124 +955,316 @@ export const ProductManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* 2. Conditionnement & Calculateur Gros -> Détail */}
-              <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                  <Calculator className="w-4 h-4 text-indigo-600" />
-                  <span>Calcul Automatique de Conversion Gros → Détail</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Type de conditionnement *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={packageType}
-                      onChange={(e) => setPackageType(e.target.value)}
-                      placeholder="ex: Carton, Sac, Casier, Paquet"
-                      className="w-full p-2 text-xs border border-slate-300 rounded-xl bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Prix d’achat conditionnement (FCFA)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={packagePurchasePrice}
-                      onChange={(e) => setPackagePurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="ex: 10000"
-                      className="w-full p-2 text-xs border border-slate-300 rounded-xl bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nombre d'articles / unités par paquet *
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={unitsPerPackage}
-                      onChange={(e) => setUnitsPerPackage(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="ex: 20"
-                      className="w-full p-2 text-xs border border-slate-300 rounded-xl bg-white font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Live Formula Banner */}
-                <div className="p-3.5 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <div>
-                    <div className="text-[11px] text-slate-500 font-medium">
-                      Formule : {Number(packagePurchasePrice) || 0} FCFA ÷ {Number(unitsPerPackage) || 1} unités =
+              {/* 2. CHOIX DU TYPE DE CONDITIONNEMENT : ARTICLE vs PAQUET */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Type de conditionnement *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Option Article */}
+                  <button
+                    type="button"
+                    id="btn-select-packaging-article"
+                    onClick={() => {
+                      setPackagingType('article');
+                      setPackageType('Article');
+                    }}
+                    className={`p-4 rounded-2xl border-2 text-left transition flex items-start gap-3.5 cursor-pointer active:scale-[0.98] ${
+                      packagingType === 'article'
+                        ? 'border-indigo-600 bg-indigo-50/70 shadow-sm ring-2 ring-indigo-600/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        packagingType === 'article'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      <Tag className="w-5 h-5" />
                     </div>
-                    <div className="text-sm font-bold text-slate-800 mt-0.5">
-                      Prix d'Achat Unitaire Calculé : <strong className="text-indigo-900">{formatCurrency(computedUnitPurchasePrice)}</strong>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-sm text-slate-900">Article</span>
+                        {packagingType === 'article' && (
+                          <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Produit stocké et vendu <strong>à l’unité</strong> (ex : Coca-Cola 50 cl, savon, pain).
+                      </p>
                     </div>
-                  </div>
+                  </button>
 
-                  <div className="text-right">
-                    <div className="text-[11px] text-slate-500 font-medium">Marge brute prévisionnelle :</div>
-                    <div className={`font-black text-sm mt-0.5 ${unitMargin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      +{formatCurrency(unitMargin)} / unité ({unitMarginPercent}%)
+                  {/* Option Paquet */}
+                  <button
+                    type="button"
+                    id="btn-select-packaging-pack"
+                    onClick={() => {
+                      setPackagingType('pack');
+                      setPackageType('Paquet');
+                      if (!itemsPerPack || Number(itemsPerPack) < 2) {
+                        setItemsPerPack(12);
+                      }
+                    }}
+                    className={`p-4 rounded-2xl border-2 text-left transition flex items-start gap-3.5 cursor-pointer active:scale-[0.98] ${
+                      packagingType === 'pack'
+                        ? 'border-indigo-600 bg-indigo-50/70 shadow-sm ring-2 ring-indigo-600/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        packagingType === 'pack'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      <Boxes className="w-5 h-5" />
                     </div>
-                  </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-sm text-slate-900">Paquet</span>
+                        {packagingType === 'pack' && (
+                          <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Stocké ou acheté en <strong>paquet contenant X articles</strong> (ex : Biscuit X, casier, pack d'eau).
+                      </p>
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              {/* 3. Prix de Vente Détail & Stocks */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Prix de Vente à l'Unité (FCFA) *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={unitSalePrice}
-                    onChange={(e) => setUnitSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="ex: 600"
-                    className="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-black text-slate-900 bg-emerald-50/40"
-                  />
-                </div>
+              {/* 3. CHAMPS SELON LE CONDITIONNEMENT */}
+              {packagingType === 'article' ? (
+                /* CAS ARTICLE : Vente et Stockage à l'unité */
+                <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    <Tag className="w-4 h-4 text-indigo-600" />
+                    <span>Configuration de l'Article (Vente & Stock à l'unité)</span>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Stock en conditionnements ({packageType || 'paquets'})
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={packageStock}
-                    onChange={(e) => handlePackageStockChange(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="ex: 5"
-                    className="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Prix d'Achat unitaire (FCFA)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitPurchasePrice}
+                        onChange={(e) => setUnitPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="ex: 450"
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Stock total en unités vendables *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={unitStock}
-                    onChange={(e) => setUnitStock(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="ex: 100"
-                    className="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bold"
-                  />
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Prix de Vente de l'article (FCFA) *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={unitSalePrice}
+                        onChange={(e) => setUnitSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="ex: 600"
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-emerald-50/50 font-black text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Stock initial (en articles) *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={unitStock}
+                        onChange={(e) => setUnitStock(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="ex: 35"
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white font-extrabold text-indigo-950 focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Margin preview */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-medium">Marge brute unitaire prévisionnelle :</span>
+                    <span className={`font-black ${unitMargin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      +{formatCurrency(unitMargin)} / article ({unitMarginPercent}%)
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* CAS PAQUET : 1 Paquet = X Articles */
+                <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl space-y-3.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                    <Boxes className="w-4 h-4 text-indigo-600" />
+                    <span>Configuration du Paquet & Conversion Automatique</span>
+                  </div>
+
+                  {/* Nombre d'articles par paquet (OBLIGATOIRE, entier >= 2) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-black text-indigo-950 mb-1">
+                        Nombre d’articles par paquet *
+                      </label>
+                      <input
+                        id="input-items-per-pack"
+                        type="number"
+                        min="2"
+                        step="1"
+                        required
+                        value={itemsPerPack}
+                        onChange={(e) => setItemsPerPack(e.target.value === '' ? '' : Math.floor(Number(e.target.value)))}
+                        placeholder="ex: 12"
+                        className="w-full p-2.5 text-xs border border-indigo-300 rounded-xl bg-white font-black text-indigo-950 focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                      />
+                      <p className="text-[10px] text-indigo-700 mt-1 font-semibold">
+                        Entier supérieur ou égal à 2 (ex : 12 pour un paquet de 12 biscuits).
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Prix d’achat du paquet complet (FCFA)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={packagePurchasePrice}
+                        onChange={(e) => setPackagePurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="ex: 10000"
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                        Prix payé au fournisseur pour 1 paquet complet.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Live Formula Banner */}
+                  <div className="p-3.5 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div>
+                      <div className="text-[11px] text-slate-500 font-medium">
+                        Règle : 1 paquet = <strong>{effectiveItemsPerPack} articles</strong>. Formule : {Number(packagePurchasePrice) || 0} FCFA ÷ {effectiveItemsPerPack} =
+                      </div>
+                      <div className="text-sm font-bold text-slate-800 mt-0.5">
+                        Prix d'Achat Unitaire Calculé : <strong className="text-indigo-900">{formatCurrency(computedUnitPurchasePrice)}</strong> / article
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-[11px] text-slate-500 font-medium">Marge brute par article :</div>
+                      <div className={`font-black text-sm mt-0.5 ${unitMargin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        +{formatCurrency(unitMargin)} ({unitMarginPercent}%)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Prix de vente détail & paquet */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Prix de Vente par Article individuel (FCFA) *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={unitSalePrice}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? '' : Number(e.target.value);
+                          setUnitSalePrice(val);
+                          if (val !== '' && packSalePrice === '') {
+                            // Suggestion automatique
+                          }
+                        }}
+                        placeholder="ex: 100"
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-emerald-50/50 font-black text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Prix lorsqu'un client achète 1 article seul à la pièce.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Prix de Vente du Paquet complet (FCFA)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={packSalePrice}
+                        onChange={(e) => setPackSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder={`ex: ${(Number(unitSalePrice) || 0) * effectiveItemsPerPack}`}
+                        className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white font-extrabold text-indigo-950 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                        Laisser vide pour calcul auto ({effectiveItemsPerPack} × {formatCurrency(Number(unitSalePrice) || 0)} = {formatCurrency(effectiveItemsPerPack * (Number(unitSalePrice) || 0))}).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Stock Initial Intelligent */}
+                  <div className="pt-2 border-t border-indigo-100">
+                    <label className="block text-xs font-black text-indigo-950 mb-1.5">
+                      Stock initial
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Nombre de paquets complets en stock
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={packageStock}
+                          onChange={(e) => setPackageStock(e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="ex: 5"
+                          className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white font-bold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Articles individuels hors paquet (optionnel)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={extraArticles}
+                          onChange={(e) => setExtraArticles(e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="ex: 0"
+                          className="w-full p-2.5 text-xs border border-slate-300 rounded-xl bg-white font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stock total automatique calculé */}
+                    <div className="mt-2.5 p-3 bg-indigo-100/70 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-950">
+                      <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <div>
+                        <strong>Calcul automatique du stock :</strong>{' '}
+                        <span>
+                          {Number(packageStock) || 0} paquet(s) × {effectiveItemsPerPack} articles
+                          {Number(extraArticles) > 0 ? ` + ${extraArticles} article(s)` : ''} ={' '}
+                          <strong className="text-indigo-900 underline decoration-indigo-400">
+                            {computedTotalStockArticles} articles au total
+                          </strong>{' '}
+                          disponibles à la vente.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 4. Alertes de Sécurité & Code-barres */}
               <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-3">
@@ -1141,6 +1431,75 @@ export const ProductManagement: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL D'AVERTISSEMENT / CONFIRMATION MODIFICATION CONDITIONNEMENT */}
+      {packConversionWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-amber-200 overflow-hidden">
+            <div className="p-5 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm">
+                  Modification du conditionnement
+                </h4>
+                <p className="text-[11px] text-amber-900 font-medium">
+                  Recalcul automatique de la répartition des stocks
+                </p>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3.5 text-xs text-slate-700">
+              <p>
+                Ce produit possède actuellement un stock de{' '}
+                <strong className="text-slate-900 font-black">{packConversionWarning.unitStock} articles</strong>.
+              </p>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <div className="text-[11px] text-slate-500 font-medium">Nouvelle répartition calculée :</div>
+                <div className="font-bold text-indigo-950">
+                  {packConversionWarning.newItemsPerPack > 1 ? (
+                    <>
+                      {Math.floor(packConversionWarning.unitStock / packConversionWarning.newItemsPerPack)} paquet(s) de{' '}
+                      {packConversionWarning.newItemsPerPack} articles
+                      {packConversionWarning.unitStock % packConversionWarning.newItemsPerPack > 0
+                        ? ` + ${packConversionWarning.unitStock % packConversionWarning.newItemsPerPack} article(s) à l'unité`
+                        : ''}
+                    </>
+                  ) : (
+                    <>{packConversionWarning.unitStock} articles vendus à l'unité</>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Le stock global en articles restera strictement intact. Voulez-vous enregistrer cette modification ?
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPackConversionWarning(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-pack-conversion"
+                onClick={() => {
+                  packConversionWarning.onConfirm();
+                }}
+                className="px-5 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+              >
+                Confirmer la modification
+              </button>
+            </div>
           </div>
         </div>
       )}

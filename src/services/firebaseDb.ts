@@ -271,8 +271,9 @@ export const firebaseDb = {
     for (const item of sale.items) {
       const prod = products.find((p) => p.id === item.product_id);
       if (prod) {
+        const itemsPerPack = prod.items_per_pack || prod.units_per_package || 1;
         const newUnitStock = Math.max(0, prod.unit_stock - item.quantity);
-        const newPkgStock = prod.units_per_package > 0 ? Math.floor(newUnitStock / prod.units_per_package) : 0;
+        const newPkgStock = Math.floor(newUnitStock / itemsPerPack);
         await updateDoc(doc(db, 'products', prod.id), {
           unit_stock: newUnitStock,
           package_stock: newPkgStock,
@@ -408,8 +409,9 @@ export const firebaseDb = {
     for (const item of sale.items) {
       const prod = products.find((p) => p.id === item.product_id);
       if (prod) {
+        const itemsPerPack = prod.items_per_pack || prod.units_per_package || 1;
         const restoredUnitStock = prod.unit_stock + item.quantity;
-        const restoredPkgStock = prod.units_per_package > 0 ? Math.floor(restoredUnitStock / prod.units_per_package) : 0;
+        const restoredPkgStock = Math.floor(restoredUnitStock / itemsPerPack);
         await updateDoc(doc(db, 'products', prod.id), {
           unit_stock: restoredUnitStock,
           package_stock: restoredPkgStock,

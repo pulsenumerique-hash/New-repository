@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conditions d'Utilisation — BoutiquePro</title>
+  <meta name="description" content="Conditions d'utilisation de BoutiquePro, solution SaaS de gestion de boutique alimentaire éditée par Fadir.">
+  <meta property="og:title" content="Conditions d'Utilisation — BoutiquePro">
+  <meta property="og:description" content="Consultez les conditions d'accès et d'utilisation de BoutiquePro éditée par Fadir.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0d9488;
+      --primary-hover: #0f766e;
+      --indigo: #4f46e5;
+      --indigo-dark: #1e1b4b;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --white: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background-color: var(--slate-50);
+      color: var(--slate-800);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--slate-900) 0%, var(--indigo-dark) 50%, #0f766e 100%);
+      color: var(--white);
+      padding: 3rem 1.5rem 3.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .header-container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      text-decoration: none;
+      color: var(--white);
+    }
+
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--indigo) 0%, var(--primary) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .brand-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: var(--white);
+      stroke-width: 2;
+    }
+
+    .brand-text h1 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+
+    .brand-text span {
+      font-size: 0.75rem;
+      color: #5eead4;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.1rem;
+      border-radius: 12px;
+      font-size: 0.825rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--white);
+      color: var(--slate-900);
+    }
+
+    .btn-primary:hover {
+      background: var(--slate-100);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--white);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .hero-title {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .meta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      background: rgba(13, 148, 136, 0.25);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #99f6e4;
+      width: fit-content;
+    }
+
+    .main-content {
+      max-width: 900px;
+      margin: -1.5rem auto 4rem;
+      padding: 0 1.5rem;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: 24px;
+      border: 1px solid var(--slate-200);
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .intro-text {
+      font-size: 1.05rem;
+      color: var(--slate-700);
+      border-left: 4px solid var(--primary);
+      padding-left: 1.25rem;
+      margin-bottom: 2rem;
+      font-weight: 500;
+    }
+
+    .toc {
+      background: var(--slate-100);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 2.5rem;
+      border: 1px solid var(--slate-200);
+    }
+
+    .toc h2 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.5rem 1rem;
+      list-style: none;
+    }
+
+    .toc-grid a {
+      color: var(--slate-600);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: color 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .toc-grid a:hover {
+      color: var(--primary);
+    }
+
+    .section {
+      padding-top: 2rem;
+      margin-top: 2rem;
+      border-top: 1px solid var(--slate-200);
+    }
+
+    .section:first-of-type {
+      border-top: none;
+      padding-top: 0;
+      margin-top: 0;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: var(--slate-100);
+      color: var(--slate-900);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--slate-200);
+    }
+
+    .section h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      letter-spacing: -0.02em;
+    }
+
+    .section p {
+      color: var(--slate-600);
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+
+    .section ul {
+      margin: 0.5rem 0 1rem 1.5rem;
+      color: var(--slate-700);
+      font-size: 0.95rem;
+    }
+
+    .section li {
+      margin-bottom: 0.4rem;
+    }
+
+    .contact-box {
+      background: linear-gradient(to bottom right, #f0fdf4, #e6fffa);
+      border: 1px solid #99f6e4;
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-top: 1.25rem;
+    }
+
+    .contact-box a {
+      color: var(--primary);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .contact-box a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      text-align: center;
+      padding: 2.5rem 1.5rem;
+      font-size: 0.85rem;
+      color: var(--slate-600);
+      border-top: 1px solid var(--slate-200);
+      background: var(--white);
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    @media print {
+      header, .actions, .toc, footer {
+        display: none !important;
+      }
+      body {
+        background: white;
+        color: black;
+      }
+      .card {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero-title {
+        font-size: 1.75rem;
+      }
+      .card {
+        padding: 1.5rem;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-container">
+      <div class="top-bar">
+        <a href="/" class="brand" title="Retourner à l'application BoutiquePro">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>BoutiquePro</h1>
+            <span>Gestion & Caisse</span>
+          </div>
+        </a>
+
+        <div class="actions">
+          <button onclick="window.print()" class="btn btn-outline" title="Imprimer ou enregistrer en PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span>Imprimer</span>
+          </button>
+          <a href="/privacy.html" class="btn btn-outline">
+            <span>Politique de Confidentialité</span>
+          </a>
+          <a href="/" class="btn btn-primary">
+            <span>Ouvrir l'application</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <div class="meta-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span>Dernière mise à jour : 7 septembre 2026</span>
+        </div>
+        <h1 class="hero-title" style="margin-top: 0.85rem;">Conditions d'Utilisation</h1>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div class="card">
+      <div class="intro-text">
+        Les présentes Conditions d'utilisation régissent l'accès et l'utilisation de <strong>BoutiquePro</strong>, une solution SaaS de gestion de boutique alimentaire éditée par <strong>Fadir</strong>.<br><br>
+        BoutiquePro permet notamment de gérer les produits, les stocks, les ventes, l'encaissement, les crédits clients, les dépenses et la caisse.<br><br>
+        En créant un compte ou en utilisant BoutiquePro, vous reconnaissez avoir pris connaissance des présentes Conditions et acceptez de les respecter.
+      </div>
+
+      <!-- Table des matières -->
+      <nav class="toc">
+        <h2>Sommaire des articles</h2>
+        <ul class="toc-grid">
+          <li><a href="#art1">1. Éditeur du service</a></li>
+          <li><a href="#art2">2. Objet du service</a></li>
+          <li><a href="#art3">3. Création et gestion du compte</a></li>
+          <li><a href="#art4">4. Connexion avec Google</a></li>
+          <li><a href="#art5">5. Utilisation autorisée</a></li>
+          <li><a href="#art6">6. Utilisations interdites</a></li>
+          <li><a href="#art7">7. Données saisies</a></li>
+          <li><a href="#art8">8. Données clients du commerçant</a></li>
+          <li><a href="#art9">9. Fonctionnement Offline-First</a></li>
+          <li><a href="#art10">10. Informations commerciales</a></li>
+          <li><a href="#art11">11. Disponibilité du service</a></li>
+          <li><a href="#art12">12. Évolution du service</a></li>
+          <li><a href="#art13">13. Propriété intellectuelle</a></li>
+          <li><a href="#art14">14. Abonnements et services payants</a></li>
+          <li><a href="#art15">15. Résiliation du compte</a></li>
+          <li><a href="#art16">16. Sauvegarde des données</a></li>
+          <li><a href="#art17">17. Limitation de responsabilité</a></li>
+          <li><a href="#art18">18. Services tiers</a></li>
+          <li><a href="#art19">19. Sécurité</a></li>
+          <li><a href="#art20">20. Modification des Conditions</a></li>
+          <li><a href="#art21">21. Droit applicable et différends</a></li>
+          <li><a href="#art22">22. Contact</a></li>
+        </ul>
+      </nav>
+
+      <!-- 1 -->
+      <section id="art1" class="section">
+        <div class="section-header">
+          <div class="section-num">01</div>
+          <h2>Éditeur du service</h2>
+        </div>
+        <p>BoutiquePro est édité et exploité par :</p>
+        <div class="contact-box">
+          <p style="margin: 0; font-weight: 800; font-size: 1.1rem; color: #065f46;">Fadir</p>
+          <p style="margin: 0.35rem 0 0; font-size: 0.95rem;">
+            <strong>E-mail :</strong> <a href="mailto:pulsenumerique@gmail.com">pulsenumerique@gmail.com</a><br>
+            <strong>Site internet :</strong> <a href="https://phenomenal-quokka-994360.netlify.app/" target="_blank" rel="noopener">https://phenomenal-quokka-994360.netlify.app/</a>
+          </p>
+        </div>
+      </section>
+
+      <!-- 2 -->
+      <section id="art2" class="section">
+        <div class="section-header">
+          <div class="section-num">02</div>
+          <h2>Objet du service</h2>
+        </div>
+        <p>BoutiquePro est une solution logicielle destinée à faciliter la gestion quotidienne des commerces, notamment des boutiques alimentaires.</p>
+        <p>Le service peut notamment permettre :</p>
+        <ul>
+          <li>la gestion des produits ;</li>
+          <li>la gestion des catégories ;</li>
+          <li>le suivi des stocks ;</li>
+          <li>l'enregistrement des ventes ;</li>
+          <li>l'encaissement ;</li>
+          <li>la gestion de la caisse ;</li>
+          <li>le suivi des dépenses ;</li>
+          <li>la gestion des crédits clients ;</li>
+          <li>la consultation de l'historique des opérations ;</li>
+          <li>la génération de tickets ou documents ;</li>
+          <li>la synchronisation des données ;</li>
+          <li>l'utilisation de certaines fonctionnalités hors connexion.</li>
+        </ul>
+        <p>Les fonctionnalités disponibles peuvent évoluer au cours du développement de BoutiquePro.</p>
+      </section>
+
+      <!-- 3 -->
+      <section id="art3" class="section">
+        <div class="section-header">
+          <div class="section-num">03</div>
+          <h2>Création et gestion du compte</h2>
+        </div>
+        <p>Certaines fonctionnalités nécessitent la création d'un compte utilisateur.</p>
+        <p>L'utilisateur s'engage à :</p>
+        <ul>
+          <li>fournir des informations exactes ;</li>
+          <li>ne pas fournir volontairement de fausses informations ;</li>
+          <li>maintenir ses informations à jour ;</li>
+          <li>protéger ses identifiants ;</li>
+          <li>ne pas partager son compte avec des personnes non autorisées ;</li>
+          <li>signaler rapidement toute utilisation suspecte ou non autorisée.</li>
+        </ul>
+        <p>L'utilisateur est responsable des opérations effectuées depuis son compte, sauf lorsqu'une utilisation frauduleuse indépendante de sa volonté est signalée dans un délai raisonnable.</p>
+      </section>
+
+      <!-- 4 -->
+      <section id="art4" class="section">
+        <div class="section-header">
+          <div class="section-num">04</div>
+          <h2>Connexion avec Google</h2>
+        </div>
+        <p>BoutiquePro peut proposer une authentification via <strong>Google</strong>.</p>
+        <p>Lorsque cette option est utilisée, certaines informations peuvent être transmises par Google à BoutiquePro conformément aux autorisations accordées par l'utilisateur.</p>
+        <p>L'utilisation de l'authentification Google est également soumise aux conditions et politiques applicables de Google.</p>
+        <p>Les données obtenues via Google sont utilisées pour permettre notamment la création, l'authentification et la sécurisation du compte BoutiquePro.</p>
+      </section>
+
+      <!-- 5 -->
+      <section id="art5" class="section">
+        <div class="section-header">
+          <div class="section-num">05</div>
+          <h2>Utilisation autorisée</h2>
+        </div>
+        <p>L'utilisateur peut utiliser BoutiquePro uniquement :</p>
+        <ul>
+          <li>conformément aux présentes Conditions ;</li>
+          <li>conformément aux lois applicables ;</li>
+          <li>dans le cadre d'une utilisation légitime ;</li>
+          <li>dans le respect des droits des autres utilisateurs et des tiers.</li>
+        </ul>
+      </section>
+
+      <!-- 6 -->
+      <section id="art6" class="section">
+        <div class="section-header">
+          <div class="section-num">06</div>
+          <h2>Utilisations interdites</h2>
+        </div>
+        <p>Il est interdit d'utiliser BoutiquePro pour :</p>
+        <ul>
+          <li>commettre une activité illégale ;</li>
+          <li>frauder ;</li>
+          <li>usurper l'identité d'une personne ou d'une entreprise ;</li>
+          <li>accéder au compte ou aux données d'un autre utilisateur sans autorisation ;</li>
+          <li>contourner les mécanismes de sécurité ;</li>
+          <li>introduire des virus ou logiciels malveillants ;</li>
+          <li>perturber volontairement le fonctionnement du service ;</li>
+          <li>effectuer des attaques informatiques ;</li>
+          <li>tenter d'obtenir un accès non autorisé aux serveurs ou systèmes ;</li>
+          <li>revendre ou exploiter le service sans autorisation ;</li>
+          <li>copier, modifier ou reproduire le logiciel ou ses composants sans autorisation.</li>
+        </ul>
+      </section>
+
+      <!-- 7 -->
+      <section id="art7" class="section">
+        <div class="section-header">
+          <div class="section-num">07</div>
+          <h2>Responsabilité concernant les données saisies</h2>
+        </div>
+        <p>L'utilisateur reste responsable des données qu'il saisit dans BoutiquePro.</p>
+        <p>Cela comprend notamment les informations relatives à la boutique, les produits, les prix, les stocks, les ventes, les clients, les crédits, les dépenses et les opérations de caisse.</p>
+        <p>L'utilisateur doit s'assurer que les informations enregistrées sont exactes et qu'il dispose des droits nécessaires pour les utiliser.</p>
+      </section>
+
+      <!-- 8 -->
+      <section id="art8" class="section">
+        <div class="section-header">
+          <div class="section-num">08</div>
+          <h2>Données des clients du commerçant</h2>
+        </div>
+        <p>Lorsque le commerçant utilise BoutiquePro pour enregistrer des données concernant ses clients, il reste responsable de la collecte et de l'utilisation de ces informations dans le cadre de son activité.</p>
+        <p>Le commerçant doit respecter les obligations légales qui lui sont applicables concernant la protection des données personnelles.</p>
+        <p>BoutiquePro fournit un outil technique destiné à faciliter la gestion commerciale et ne détermine pas les finalités propres à l'activité commerciale de chaque utilisateur.</p>
+      </section>
+
+      <!-- 9 -->
+      <section id="art9" class="section">
+        <div class="section-header">
+          <div class="section-num">09</div>
+          <h2>Fonctionnement Offline-First</h2>
+        </div>
+        <p>BoutiquePro peut permettre à certaines fonctionnalités de fonctionner sans connexion Internet.</p>
+        <p>Les données saisies hors connexion peuvent être conservées localement sur l'appareil puis synchronisées lorsque la connexion est rétablie.</p>
+        <p>L'utilisateur reconnaît que :</p>
+        <ul>
+          <li>certaines fonctionnalités peuvent ne pas être disponibles hors connexion ;</li>
+          <li>la synchronisation peut être retardée ;</li>
+          <li>des conflits de données peuvent exceptionnellement survenir ;</li>
+          <li>une panne, une perte ou une réinitialisation de l'appareil peut affecter les données qui n'ont pas encore été synchronisées.</li>
+        </ul>
+        <p>L'utilisateur doit prendre les précautions nécessaires pour protéger son appareil et ses données.</p>
+      </section>
+
+      <!-- 10 -->
+      <section id="art10" class="section">
+        <div class="section-header">
+          <div class="section-num">10</div>
+          <h2>Exactitude des informations commerciales</h2>
+        </div>
+        <p>BoutiquePro est un outil de gestion.</p>
+        <p>L'utilisateur reste responsable de vérifier l'exactitude des informations saisies dans le système, notamment les prix, les quantités, les ventes, les dépenses, les paiements, les crédits et les informations de caisse.</p>
+        <p>BoutiquePro ne garantit pas que les informations saisies par l'utilisateur sont exactes ou conformes à sa comptabilité.</p>
+      </section>
+
+      <!-- 11 -->
+      <section id="art11" class="section">
+        <div class="section-header">
+          <div class="section-num">11</div>
+          <h2>Disponibilité du service</h2>
+        </div>
+        <p>Fadir fait des efforts raisonnables afin de maintenir BoutiquePro disponible.</p>
+        <p>Toutefois, le service peut être temporairement indisponible en raison notamment de maintenance, de mises à jour, de problèmes techniques, de pannes de réseau, de problèmes liés à des prestataires tiers ou d'événements indépendants de la volonté raisonnable de Fadir.</p>
+        <p>Fadir ne garantit pas une disponibilité permanente ou ininterrompue du service.</p>
+      </section>
+
+      <!-- 12 -->
+      <section id="art12" class="section">
+        <div class="section-header">
+          <div class="section-num">12</div>
+          <h2>Évolution du service</h2>
+        </div>
+        <p>Fadir peut modifier, améliorer, remplacer ou supprimer certaines fonctionnalités de BoutiquePro.</p>
+        <p>Ces changements peuvent notamment avoir pour objectif d'améliorer la sécurité, de corriger des erreurs, d'améliorer les performances, d'ajouter de nouvelles fonctionnalités ou de respecter des exigences techniques ou légales.</p>
+      </section>
+
+      <!-- 13 -->
+      <section id="art13" class="section">
+        <div class="section-header">
+          <div class="section-num">13</div>
+          <h2>Propriété intellectuelle</h2>
+        </div>
+        <p>BoutiquePro, son nom, son logo, son identité visuelle, son interface, son code, ses textes, ses éléments graphiques et ses fonctionnalités peuvent être protégés par les règles applicables en matière de propriété intellectuelle.</p>
+        <p>Sauf autorisation expresse de Fadir, l'utilisateur ne peut pas copier le logiciel, reproduire le logo ou l'identité visuelle à des fins commerciales, revendre le service, distribuer le code, modifier ou créer des versions dérivées du logiciel, ni exploiter commercialement les éléments propriétaires de BoutiquePro.</p>
+      </section>
+
+      <!-- 14 -->
+      <section id="art14" class="section">
+        <div class="section-header">
+          <div class="section-num">14</div>
+          <h2>Abonnements et services payants</h2>
+        </div>
+        <p>Si BoutiquePro propose des abonnements ou fonctionnalités payantes, les prix et modalités applicables seront présentés à l'utilisateur avant toute souscription.</p>
+        <p>Les conditions de paiement, de renouvellement et d'annulation seront précisées au moment de la souscription lorsque cela est applicable.</p>
+        <p>Les paiements peuvent être traités par des prestataires de paiement tiers.</p>
+      </section>
+
+      <!-- 15 -->
+      <section id="art15" class="section">
+        <div class="section-header">
+          <div class="section-num">15</div>
+          <h2>Résiliation du compte</h2>
+        </div>
+        <p>L'utilisateur peut cesser d'utiliser BoutiquePro et demander la suppression de son compte en contactant : <strong><a href="mailto:pulsenumerique@gmail.com">pulsenumerique@gmail.com</a></strong>.</p>
+        <p>Fadir peut également suspendre ou résilier un compte lorsqu'il existe notamment :</p>
+        <ul>
+          <li>une violation des présentes Conditions ;</li>
+          <li>une activité frauduleuse ou illégale ;</li>
+          <li>une tentative de compromission du service ;</li>
+          <li>un comportement susceptible de porter atteinte à la sécurité du service ou aux autres utilisateurs ;</li>
+          <li>un défaut de paiement lorsqu'un abonnement payant est applicable.</li>
+        </ul>
+        <p>Lorsque cela est raisonnablement possible, Fadir peut informer l'utilisateur avant la suspension ou la résiliation.</p>
+      </section>
+
+      <!-- 16 -->
+      <section id="art16" class="section">
+        <div class="section-header">
+          <div class="section-num">16</div>
+          <h2>Sauvegarde des données</h2>
+        </div>
+        <p>BoutiquePro peut proposer des mécanismes de synchronisation et de stockage des données. Ces mécanismes sont conçus pour réduire les risques de perte de données, mais ne constituent pas une garantie absolue.</p>
+        <p>L'utilisateur reste responsable de conserver les documents et informations nécessaires à son activité professionnelle. Pour les données commerciales importantes, il est recommandé de conserver des sauvegardes appropriées lorsque cela est possible.</p>
+      </section>
+
+      <!-- 17 -->
+      <section id="art17" class="section">
+        <div class="section-header">
+          <div class="section-num">17</div>
+          <h2>Limitation de responsabilité</h2>
+        </div>
+        <p>BoutiquePro est un outil logiciel destiné à faciliter la gestion d'une activité commerciale.</p>
+        <p>Fadir ne garantit pas notamment une augmentation du chiffre d'affaires, des bénéfices, l'absence totale d'erreurs, l'absence totale d'interruption, l'absence totale de perte de données, ni l'adéquation du service à une situation comptable, fiscale ou juridique particulière.</p>
+        <p>L'utilisateur reste responsable de ses décisions commerciales ainsi que du respect de ses obligations comptables, fiscales, administratives et légales. BoutiquePro ne constitue pas un service de conseil comptable, fiscal ou juridique.</p>
+        <p>Dans les limites autorisées par la loi applicable, Fadir ne pourra être tenu responsable des conséquences résultant notamment d'une mauvaise utilisation du service, d'informations incorrectement saisies par l'utilisateur, d'une défaillance de l'appareil de l'utilisateur ou d'événements indépendants de son contrôle raisonnable.</p>
+      </section>
+
+      <!-- 18 -->
+      <section id="art18" class="section">
+        <div class="section-header">
+          <div class="section-num">18</div>
+          <h2>Services tiers</h2>
+        </div>
+        <p>BoutiquePro peut utiliser ou intégrer certains services tiers nécessaires à son fonctionnement (authentification, hébergement, stockage, paiement, communication, analyse technique).</p>
+        <p>Ces services peuvent être soumis à leurs propres conditions d'utilisation et politiques de confidentialité.</p>
+      </section>
+
+      <!-- 19 -->
+      <section id="art19" class="section">
+        <div class="section-header">
+          <div class="section-num">19</div>
+          <h2>Sécurité</h2>
+        </div>
+        <p>L'utilisateur doit contribuer à la sécurité de son compte et du service. Il doit notamment protéger ses identifiants, protéger son appareil, ne pas partager ses accès avec des personnes non autorisées, signaler toute activité suspecte et utiliser les mécanismes de sécurité disponibles.</p>
+        <p>Toute tentative visant à compromettre la sécurité de BoutiquePro est strictement interdite.</p>
+      </section>
+
+      <!-- 20 -->
+      <section id="art20" class="section">
+        <div class="section-header">
+          <div class="section-num">20</div>
+          <h2>Modification des Conditions</h2>
+        </div>
+        <p>Fadir peut modifier les présentes Conditions afin de tenir compte de l'évolution de BoutiquePro, de ses fonctionnalités ou des exigences légales.</p>
+        <p>La date de dernière mise à jour sera indiquée en haut de cette page. La poursuite de l'utilisation du service après l'entrée en vigueur de nouvelles Conditions peut constituer une acceptation des modifications, dans les limites autorisées par la législation applicable.</p>
+      </section>
+
+      <!-- 21 -->
+      <section id="art21" class="section">
+        <div class="section-header">
+          <div class="section-num">21</div>
+          <h2>Droit applicable et règlement des différends</h2>
+        </div>
+        <p>Les présentes Conditions sont interprétées conformément aux lois applicables dans la juridiction où Fadir est légalement établi, sous réserve des règles impératives applicables.</p>
+        <p>En cas de différend concernant BoutiquePro, les parties chercheront en priorité à trouver une solution amiable. À défaut d'accord amiable, le différend pourra être soumis aux juridictions compétentes conformément au droit applicable.</p>
+      </section>
+
+      <!-- 22 -->
+      <section id="art22" class="section">
+        <div class="section-header">
+          <div class="section-num">22</div>
+          <h2>Contact</h2>
+        </div>
+        <p>Pour toute question concernant BoutiquePro ou les présentes Conditions d'utilisation :</p>
+        <div class="contact-box">
+          <p style="margin: 0;"><strong>Éditeur :</strong> Fadir</p>
+          <p style="margin: 0.35rem 0 0;"><strong>E-mail :</strong> <a href="mailto:pulsenumerique@gmail.com">pulsenumerique@gmail.com</a></p>
+          <p style="margin: 0.35rem 0 0;"><strong>Site officiel :</strong> <a href="https://phenomenal-quokka-994360.netlify.app/" target="_blank" rel="noopener">https://phenomenal-quokka-994360.netlify.app/</a></p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 BoutiquePro • Édité par <strong>Fadir</strong>. Tous droits réservés.</p>
+    <p style="margin-top: 0.4rem; font-size: 0.8rem;">
+      <a href="/privacy.html">Politique de Confidentialité</a> • 
+      <a href="/">Accéder au logiciel de caisse BoutiquePro</a>
+    </p>
+  </footer>
+
+</body>
+</html>
